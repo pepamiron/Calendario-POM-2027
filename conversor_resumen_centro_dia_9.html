@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conversor RESUMEN CENTRO DÍA · PA27</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg: #12141a; --panel: #1a1d26; --panel-2: #20242f; --panel-3: #262b38;
+    --border: #2c3140; --text: #e8eaf0; --text-dim: #8b91a3;
+    --accent: #6c8ef5; --accent-bg: rgba(108,142,245,0.14);
+    --warn: #d9914f; --warn-bg: rgba(217,145,79,0.14);
+    --ok: #4fb477; --ok-bg: rgba(79,180,119,0.14);
+    --radius: 10px; --mono: 'SF Mono','JetBrains Mono',Consolas,monospace;
+  }
+  [data-theme="light"]{
+    --bg: #f3f4f7; --panel: #fff; --panel-2: #f7f8fb; --panel-3: #eef0f5;
+    --border: #e1e4ec; --text: #1b1e27; --text-dim: #666e82;
+    --accent: #3f5fd9; --accent-bg: rgba(63,95,217,0.10);
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; min-height:100vh; }
+  header{ position:sticky; top:0; z-index:50; background:var(--panel); border-bottom:1px solid var(--border); padding:14px 20px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  header h1{ font-size:17px; margin:0; font-weight:700; letter-spacing:-.2px; white-space:nowrap; }
+  header h1 span{ color:var(--text-dim); font-weight:500; }
+  .spacer{ flex:1; }
+  button,.btn{ background:var(--panel-2); color:var(--text); border:1px solid var(--border); padding:8px 14px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; display:inline-flex; align-items:center; gap:6px; transition:.15s; white-space:nowrap; }
+  button:hover{ border-color:var(--accent); color:var(--accent); }
+  button:disabled{ opacity:.5; cursor:not-allowed; }
+  input[type=file]{ display:none; }
+  main{ padding:20px; max-width:1200px; margin:0 auto; }
+
+  #dropzone{ border:2px dashed var(--border); border-radius:16px; padding:60px 20px; text-align:center; color:var(--text-dim); margin-top:40px; transition:.15s; }
+  #dropzone.drag{ border-color:var(--accent); background:var(--accent-bg); }
+  #dropzone h2{ color:var(--text); font-size:20px; margin:0 0 8px; }
+  #dropzone p{ font-size:13px; margin:4px 0; }
+  #dropzone .btn{ margin-top:16px; display:inline-flex; }
+  #progress{ margin-top:20px; font-size:13px; color:var(--text-dim); text-align:center; }
+
+  .stats{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:16px; }
+  .stat{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; }
+  .stat .num{ font-size:22px; font-weight:800; font-family:var(--mono); }
+  .stat .label{ font-size:11px; color:var(--text-dim); margin-top:1px; }
+
+  .panel{ background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:16px; }
+  .panel h3{ margin:0 0 10px; font-size:14px; display:flex; align-items:center; gap:8px; }
+  .warn-item{ display:flex; gap:10px; padding:8px 0; border-top:1px solid var(--border); font-size:12.5px; align-items:flex-start; }
+  .warn-item:first-child{ border-top:none; }
+  .warn-item .wicon{ flex:0 0 20px; }
+  .warn-item .wtitle{ font-weight:700; display:block; }
+  .warn-item .wdesc{ color:var(--text-dim); }
+  .warn-list{ max-height:260px; overflow:auto; margin-top:4px; font-size:11.5px; color:var(--text-dim); }
+  .warn-list div{ padding:2px 0; }
+
+  .downloads{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+  .downloads button{ padding:10px 18px; font-size:13px; }
+
+  table.preview{ width:100%; border-collapse:collapse; font-size:12px; }
+  table.preview th{ text-align:left; color:var(--text-dim); font-weight:600; padding:6px 8px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--panel); }
+  table.preview td{ padding:6px 8px; border-bottom:1px solid var(--border); font-family:var(--mono); }
+  .preview-wrap{ max-height:420px; overflow:auto; border:1px solid var(--border); border-radius:8px; }
+  .badge{ display:inline-flex; }
+
+  select, input[type=text]{ background:var(--panel-2); color:var(--text); border:1px solid var(--border); padding:6px 10px; border-radius:8px; font-size:12.5px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Conversor RESUMEN CENTRO DÍA <span>· PA27 (semana → día)</span></h1>
+  <div class="spacer"></div>
+  <a class="btn" href="https://docs.google.com/spreadsheets/d/1wQfPg10TCzr3L_DQ-ElPw_5T0kNfOoSqVbgAH8DohYY/edit?gid=2034162180#gid=2034162180" target="_blank" rel="noopener">📊 Tabla de origen (Drive)</a>
+  <label class="btn" for="fileInput">📂 Cargar Excel</label>
+  <input type="file" id="fileInput" accept=".xlsx,.xls">
+  <button id="themeToggle">🌙 / ☀️</button>
+</header>
+
+<main>
+
+  <div id="dropzone">
+    <h2>Sube el Excel de Dimensionado PA'27</h2>
+    <p>Arrastra aquí el fichero, o pulsa el botón para seleccionarlo.</p>
+    <p>Leo las pestañas de <b>"4. CCPP x Centro"</b> y <b>"5. Centro x POM"</b>, las paso a diario (semana empieza en viernes, salvo cierres con fecha de reforma anotada, que usan esa fecha exacta), y las uno en una tabla tipo <b>RESUMEN CENTRO DÍA</b>.</p>
+    <label class="btn" for="fileInput">📂 Seleccionar Excel</label>
+    <div id="progress"></div>
+  </div>
+
+  <div id="app" style="display:none;">
+
+    <div class="stats" id="statsWrap"></div>
+
+    <div class="panel" id="warnPanel"></div>
+
+    <div class="downloads">
+      <button id="downloadXlsx">⬇️ Descargar .xlsx</button>
+      <button id="downloadCsv">⬇️ Descargar .csv</button>
+    </div>
+
+    <div class="panel">
+      <h3>Vista previa <span style="color:var(--text-dim); font-weight:400; font-size:12px;">(primeras filas — la descarga incluye la tabla completa)</span></h3>
+      <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+        <input type="text" id="filterCentro" placeholder="Filtrar por centro…">
+      </div>
+      <div class="preview-wrap">
+        <table class="preview" id="previewTable"></table>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<script>
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const YEAR = 2027;
+
+const MOV_ICON = {
+  nueva_implantacion: '🆕', ampliacion:'▲', reduccion:'▼', cierre_reforma:'🔧',
+  cierre_servicio:'⛔', temporal_apertura:'⏳', temporal_cierre:'⏳', reapertura:'↩️'
+};
+
+let finalRows = [];      // the full output table, one row per (centro, day)
+let warnings = [];        // data-quality notes to surface
+let statsInfo = {};
+
+function excelToJSDate(v){
+  if (v instanceof Date) return normalizeToLocalMidnight(v);
+  if (typeof v === 'number'){
+    const utc_days = Math.floor(v - 25569);
+    const utcInstant = new Date(utc_days * 86400 * 1000);
+    // Rebuild from the UTC calendar fields (not local getters) so the calendar date read from
+    // the spreadsheet is preserved exactly, then re-anchor it at LOCAL midnight. Without this,
+    // comparing this UTC-based instant against a locally-constructed Date (new Date(y,m,d)) can
+    // land on the wrong side of a <= check depending on the browser's timezone offset — which
+    // silently drops the postal-code assignment for the Friday that starts each week.
+    return new Date(utcInstant.getUTCFullYear(), utcInstant.getUTCMonth(), utcInstant.getUTCDate());
+  }
+  return null;
+}
+function normalizeToLocalMidnight(d){
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function fmtDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function fmtDateHuman(d){ return d.getDate()+' '+MONTHS[d.getMonth()].toLowerCase()+' '+d.getFullYear(); }
+function normalizeHeader(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim(); }
+function addDays(date, n){ const d = new Date(date); d.setDate(d.getDate()+n); return d; }
+function dateRangeDays(start, end){
+  const out = []; let d = new Date(start);
+  while(d <= end){ out.push(new Date(d)); d = addDays(d,1); }
+  return out;
+}
+
+// ---------- locate sheets (robust to renaming / column reordering) ----------
+function findPomSheet(wb){
+  let name = wb.SheetNames.find(n => normalizeHeader(n).includes('CENTRO') && normalizeHeader(n).includes('POM'));
+  if(name) return name;
+  for(const n of wb.SheetNames){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:true, defval:null});
+    for(let r=0;r<Math.min(10,rows.length);r++){
+      if(rows[r] && rows[r].some(c=>normalizeHeader(c)==='CENTRO') && rows[r].some(c=>normalizeHeader(c).includes('POM'))) return n;
+    }
+  }
+  return null;
+}
+function findCPCentroSheet(wb){
+  for(const name of wb.SheetNames){
+    let rows;
+    try{ rows = XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1, raw:true, defval:null}); }catch(e){ continue; }
+    for(let r=0;r<Math.min(10,rows.length);r++){
+      const row = rows[r];
+      if(!row) continue;
+      const hasPostal = row.some(c=>normalizeHeader(c)==='POSTAL_CODE');
+      const centroIdx = row.findIndex(c=>normalizeHeader(c)==='CENTRO');
+      if(hasPostal && centroIdx>-1) return { sheetName:name, headerRowIdx:r, centroMarkerCol:centroIdx };
+    }
+  }
+  return null;
+}
+
+// ---------- parse "Centro x POM" ----------
+function buildPomColumnMap(headerRow){
+  const map = {};
+  const aliases = {
+    centro:['CENTRO'], denom:['DENOMINACION'], poblacion:['POBLACION'], provincia:['PROVINCIA'],
+    zona:['ZONA'], region:['REGION'], agrupacion:['AGRUPACION'],
+    reforma:['REFORMA (FECHA)','REFORMA'], tipoTienda:['TIPO TIENDA','TIPO DE TIENDA','NSD']
+  };
+  headerRow.forEach((h,idx)=>{
+    const nh = normalizeHeader(h);
+    if(!nh) return;
+    for(const key in aliases){
+      if(map[key]!==undefined) continue;
+      if(aliases[key].some(a=>nh===a || nh.includes(a))) map[key]=idx;
+    }
+  });
+  return map;
+}
+function normalizeTipoTienda(v){
+  if(v===null||v===undefined||v==='') return 'Tienda';
+  const s = String(v).trim().toLowerCase();
+  if(s==='tienda') return 'Tienda';
+  if(s==='colmena') return 'Colmena';
+  if(s==='panal') return 'Panal';
+  return String(v).trim();
+}
+function classifyTransitions(numVals){
+  const active = numVals.map(v => v!==null && v!==undefined && v>0);
+  const firstActiveIdx = active.findIndex(a=>a);
+  if(firstActiveIdx===-1) return { events:[], isTemporal:false };
+  let hasCloseAfter = false;
+  for(let i=firstActiveIdx+1;i<active.length;i++){ if(active[i-1] && !active[i]) hasCloseAfter = true; }
+  const isTemporal = firstActiveIdx>0 && hasCloseAfter;
+  const events = [];
+  let prev = numVals[0] || 0, prevActive = active[0];
+  for(let i=1;i<numVals.length;i++){
+    const cur = numVals[i] || 0, curActive = active[i];
+    if(cur !== prev){
+      let tipo = null;
+      if(!prevActive && curActive){
+        tipo = isTemporal ? 'temporal_apertura' : (i===firstActiveIdx ? 'nueva_implantacion' : 'reapertura');
+      } else if(prevActive && !curActive){
+        const reopensLater = active.slice(i).some(a=>a);
+        tipo = isTemporal ? 'temporal_cierre' : (reopensLater ? 'cierre_reforma' : 'cierre_servicio');
+      } else if(prevActive && curActive){
+        tipo = cur > prev ? 'ampliacion' : 'reduccion';
+      }
+      if(tipo) events.push({ idx:i, tipo, from:prev, to:cur });
+    }
+    prev = cur; prevActive = curActive;
+  }
+  // esVerano / permanente flags (kept for the "especial" column, same rules as the calendar tool)
+  const hasSummerUp = events.some(e=>e.tipo==='ampliacion' && [4,5,6].includes(weekAnchorsGlobal[e.idx] ? weekAnchorsGlobal[e.idx].getMonth() : -1));
+  return { events, isTemporal };
+}
+
+let weekAnchorsGlobal = []; // filled once POM sheet is parsed, used by classifyTransitions for verano detection
+
+function parsePomSheet(wb){
+  const sheetName = findPomSheet(wb);
+  if(!sheetName) throw new Error('No se encuentra ninguna pestaña con centro + POM en este Excel.');
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, raw:true, defval:null});
+  let headerRowIdx = rows.findIndex(row=>row && row.some(c=>normalizeHeader(c)==='CENTRO'));
+  if(headerRowIdx===-1) throw new Error('No se encuentra la fila de cabecera (CENTRO) en la pestaña de POM.');
+  const headerRow = rows[headerRowIdx];
+  const colMap = buildPomColumnMap(headerRow);
+
+  let firstDateCol = -1;
+  for(let c=0;c<headerRow.length;c++){
+    const d = excelToJSDate(headerRow[c]);
+    if(d && d.getFullYear()>2015 && d.getFullYear()<2100){ firstDateCol = c; break; }
+  }
+  if(firstDateCol===-1) throw new Error('No se encuentran columnas de semanas (fechas) en la pestaña de POM.');
+  const weekDates = [];
+  for(let c=firstDateCol;c<headerRow.length;c++){
+    const d = excelToJSDate(headerRow[c]);
+    if(d) weekDates.push(d);
+  }
+  weekAnchorsGlobal = weekDates;
+
+  const centros = {};
+  for(let r=headerRowIdx+1;r<rows.length;r++){
+    const row = rows[r];
+    if(!row) continue;
+    const centroVal = colMap.centro!==undefined ? row[colMap.centro] : null;
+    if(centroVal===null||centroVal===undefined||centroVal==='') continue;
+    const vals = [];
+    for(let c=firstDateCol;c<row.length;c++) vals.push(row[c]);
+    const numVals = vals.map(v => (typeof v==='number') ? v : (v===null||v===undefined?null:Number(v)));
+    if(numVals.every(v=>!v)) continue; // no plan at all for this center
+
+    const reformaRaw = colMap.reforma!==undefined ? row[colMap.reforma] : null;
+    const reformaDate = excelToJSDate(reformaRaw);
+    const reformaRawStr = (reformaRaw===null||reformaRaw===undefined) ? '' : String(reformaRaw).trim();
+
+    const { events, isTemporal } = classifyTransitions(numVals);
+
+    // esVerano / permanente flags, mirroring the calendar tool
+    events.forEach(e=>{ e.esVerano = false; });
+    const hasSummerUp = events.some(e=>e.tipo==='ampliacion' && [4,5,6].includes(weekDates[e.idx].getMonth()));
+    const hasSummerDown = events.some(e=>e.tipo==='reduccion' && [7,8].includes(weekDates[e.idx].getMonth()));
+    if(hasSummerUp && hasSummerDown){
+      events.forEach(e=>{
+        if((e.tipo==='ampliacion' && [4,5,6].includes(weekDates[e.idx].getMonth())) ||
+           (e.tipo==='reduccion' && [7,8].includes(weekDates[e.idx].getMonth()))) e.esVerano = true;
+      });
+    }
+    const sortedEvents = events.slice().sort((a,b)=>a.idx-b.idx);
+    const lastEv = sortedEvents[sortedEvents.length-1];
+    if(lastEv && lastEv.tipo==='ampliacion') lastEv.permanente = true;
+
+    centros[String(centroVal)] = {
+      centro: centroVal,
+      denom: colMap.denom!==undefined ? (row[colMap.denom]||'') : '',
+      poblacion: colMap.poblacion!==undefined ? (row[colMap.poblacion]||'') : '',
+      provincia: colMap.provincia!==undefined ? (row[colMap.provincia]||'') : '',
+      zona: colMap.zona!==undefined && row[colMap.zona]!=null ? String(row[colMap.zona]) : '',
+      region: colMap.region!==undefined ? (row[colMap.region]||'') : '',
+      tipoTienda: normalizeTipoTienda(colMap.tipoTienda!==undefined ? row[colMap.tipoTienda] : null),
+      reformaRaw: reformaRawStr,
+      reformaDate,
+      weeklyValues: numVals,
+      events
+    };
+  }
+  return { centros, weekDates };
+}
+
+// ---------- parse "CCPP x Centro" ----------
+function parseCPSheet(wb){
+  const info = findCPCentroSheet(wb);
+  if(!info) return null; // optional: tool still works for POM-only, just without postal_codes
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[info.sheetName], {header:1, raw:true, defval:null});
+  const headerRow = rows[info.headerRowIdx];
+  // "mercacp" is the real identifier to use in the output — some postal codes are split into
+  // sub-areas (e.g. 30380 -> 30380.1/.2/.3/.4) and only the mercacp column keeps that distinction;
+  // "postal_code" collapses them all back to the same parent code. Fall back to postal_code only
+  // if this particular file doesn't have a mercacp column at all.
+  let mercaColIdx = headerRow.findIndex(c=>normalizeHeader(c)==='MERCACP');
+  const postalColIdx = headerRow.findIndex(c=>normalizeHeader(c)==='POSTAL_CODE');
+  if(mercaColIdx===-1) mercaColIdx = postalColIdx;
+  let centroDateStart = -1;
+  for(let c=info.centroMarkerCol;c<headerRow.length;c++){
+    const d = excelToJSDate(headerRow[c]);
+    if(d && d.getFullYear()>2015 && d.getFullYear()<2100){ centroDateStart = c; break; }
+  }
+  if(centroDateStart===-1) return null;
+  const weekDates = [];
+  for(let c=centroDateStart;c<headerRow.length;c++) weekDates.push(excelToJSDate(headerRow[c]));
+
+  const cpRows = [];
+  for(let r=info.headerRowIdx+1;r<rows.length;r++){
+    const row = rows[r];
+    if(!row) continue;
+    const postal = formatPostal(row[mercaColIdx]);
+    if(postal===null||postal===undefined||postal==='') continue;
+    const centros = [];
+    for(let c=centroDateStart;c<row.length;c++){
+      const v = row[c];
+      centros.push(v===null||v===undefined||v==='' ? null : String(v).trim());
+    }
+    cpRows.push({ postal, centros });
+  }
+  return { weekDates, rows: cpRows };
+}
+
+// Spanish postal codes are always 5 digits, including a leading zero for provinces 01-09.
+// The source spreadsheet stores them as numbers, which silently drops that leading zero —
+// this restores it. Sub-divided codes like "30380.3" keep their decimal suffix untouched.
+function formatPostal(p){
+  if(p===null||p===undefined||p==='') return null;
+  const s = String(p).trim();
+  const m = s.match(/^(\d+)(\.\d+)?$/);
+  if(!m) return s;
+  return m[1].padStart(5,'0') + (m[2]||'');
+}
+
+// ---------- week-block helpers (Friday-start weeks) ----------
+function weekIndexForDay(day, weekDates){
+  // returns the index i such that weekDates[i] <= day < weekDates[i+1]
+  let idx = -1;
+  for(let i=0;i<weekDates.length;i++){
+    if(weekDates[i] <= day) idx = i; else break;
+  }
+  return idx;
+}
+
+// ---------- build the daily POM series for one center, honoring the reforma-date exception on closures ----------
+function buildDailyPom(centroData, weekDates, allDays){
+  const REFORMA_MATCH_WINDOW_DAYS = 10;
+  const transitions = [{ date: weekDates[0], value: centroData.weeklyValues[0] || 0 }];
+  centroData.events.forEach(e=>{
+    let effDate = weekDates[e.idx];
+    if(['cierre_reforma','cierre_servicio','temporal_cierre'].includes(e.tipo) && centroData.reformaDate){
+      // The REFORMA (FECHA) column only holds ONE date per center, but a center can close and
+      // reopen more than once in the year. Only use that date for the closure it actually
+      // corresponds to — the one whose week falls near it — not for every closure of that center.
+      const diffDays = Math.abs((centroData.reformaDate - weekDates[e.idx]) / 86400000);
+      if(diffDays <= REFORMA_MATCH_WINDOW_DAYS) effDate = centroData.reformaDate;
+    } else if(e.tipo === 'reduccion'){
+      // Every model reduction, whatever the reason (verano, refuerzo de otra reforma, o cualquier
+      // otra), takes effect the Monday after that week's Friday, not the Friday itself.
+      effDate = addDays(weekDates[e.idx], 3);
+    }
+    transitions.push({ date: effDate, value: e.to, tipo: e.tipo, esVerano: e.esVerano, permanente: e.permanente, effDate, weekFriday: weekDates[e.idx] });
+  });
+  transitions.sort((a,b)=>a.date-b.date);
+
+  const dailyValue = new Array(allDays.length).fill(null);
+  const dailyBadge = new Array(allDays.length).fill('');
+  let ti = 0;
+  for(let i=0;i<allDays.length;i++){
+    while(ti+1 < transitions.length && transitions[ti+1].date <= allDays[i]) ti++;
+    dailyValue[i] = transitions[ti].value;
+  }
+  // place badges exactly on their effective day
+  transitions.forEach(t=>{
+    if(!t.tipo) return;
+    const dIdx = allDays.findIndex(d => fmtDate(d) === fmtDate(t.date));
+    if(dIdx>-1){
+      let icon = MOV_ICON[t.tipo] || '';
+      if(t.esVerano) icon += '☀️';
+      if(t.permanente) icon += '📌';
+      dailyBadge[dIdx] = icon;
+    }
+  });
+  return { dailyValue, dailyBadge, transitions };
+}
+
+// ---------- build the daily CP list for every center (default Friday-start blocks, no exceptions) ----------
+function buildDailyCP(cpData, allDays){
+  // dailyCPByCentro[dayIndex] = Map(centro -> [postal,...])
+  const result = allDays.map(()=>({}));
+  if(!cpData) return result;
+  const weekIdxCache = allDays.map(d => weekIndexForDay(d, cpData.weekDates));
+  cpData.rows.forEach(row=>{
+    for(let i=0;i<allDays.length;i++){
+      const wi = weekIdxCache[i];
+      if(wi===-1) continue;
+      const centro = row.centros[wi];
+      if(!centro) continue;
+      if(!result[i][centro]) result[i][centro] = [];
+      result[i][centro].push(row.postal);
+    }
+  });
+  return result;
+}
+
+// ---------- main pipeline ----------
+function processWorkbook(wb){
+  const { centros, weekDates } = parsePomSheet(wb);
+  const cpData = parseCPSheet(wb);
+
+  const start = new Date(YEAR,0,1);
+  const end = new Date(YEAR,11,31);
+  const allDays = dateRangeDays(start, end);
+
+  const dailyCP = buildDailyCP(cpData, allDays);
+
+  const rows = [];
+  warnings = [];
+
+  const centroKeys = Object.keys(centros);
+  const centrosSinCP = [];
+  const centrosConPteFecha = [];
+  const centrosConReformaExacta = [];
+
+  centroKeys.forEach(key=>{
+    const c = centros[key];
+    const { dailyValue, dailyBadge } = buildDailyPom(c, weekDates, allDays);
+
+    let everHasCP = false;
+    for(let i=0;i<allDays.length;i++){
+      const cpList = dailyCP[i][key];
+      if(cpList && cpList.length) everHasCP = true;
+    }
+    if(!everHasCP) centrosSinCP.push({ centro:c.centro, denom:c.denom, poblacion:c.poblacion });
+
+    const hasPteFecha = c.events.some(e=>['cierre_reforma','cierre_servicio','temporal_cierre'].includes(e.tipo)) && c.reformaRaw && c.reformaRaw.toUpperCase()==='PTE. FECHA';
+    if(hasPteFecha) centrosConPteFecha.push({ centro:c.centro, denom:c.denom });
+    if(c.reformaDate) centrosConReformaExacta.push({ centro:c.centro, denom:c.denom, fecha:fmtDateHuman(c.reformaDate) });
+
+    for(let i=0;i<allDays.length;i++){
+      const cpList = (dailyCP[i][key] || []).slice().sort((a,b)=>parseFloat(a)-parseFloat(b));
+      rows.push({
+        mercadona_code: c.centro,
+        date: allDays[i],
+        pom: dailyValue[i],
+        morning_pom: 0,
+        postal_codes: cpList.join(', ')
+      });
+    }
+  });
+
+  // Warn about centers present in the CP sheet but entirely absent from the POM sheet
+  const centrosEnCP = new Set();
+  if(cpData){
+    cpData.rows.forEach(row=> row.centros.forEach(c=>{ if(c) centrosEnCP.add(c); }));
+  }
+  const centrosSoloEnCP = [...centrosEnCP].filter(c => !centroKeys.includes(c));
+
+  if(centrosSoloEnCP.length){
+    warnings.push({
+      icon:'⚠️', title:`${centrosSoloEnCP.length} centro(s) con códigos postales asignados pero sin fila en la pestaña de POM`,
+      desc:'Sus códigos postales no aparecerán en ningún sitio del resultado final, porque no hay POM al que asociarlos.',
+      list: centrosSoloEnCP.map(c=>`Centro ${c}`)
+    });
+  }
+  if(centrosSinCP.length){
+    warnings.push({
+      icon:'⚠️', title:`${centrosSinCP.length} centro(s) con POM activo pero sin ningún código postal asignado en todo el año`,
+      desc:'Aparecerán en el resultado con la columna postal_codes vacía todos los días.',
+      list: centrosSinCP.map(c=>`${c.centro} · ${c.denom}${c.poblacion?' · '+c.poblacion:''}`)
+    });
+  }
+  if(centrosConPteFecha.length){
+    warnings.push({
+      icon:'⏳', title:`${centrosConPteFecha.length} centro(s) con cierre pero fecha de reforma "Pte. Fecha" (sin fecha aún)`,
+      desc:'No se puede aplicar la excepción de fecha exacta porque no hay un día concreto anotado — se ha usado el viernes de esa semana por defecto. Revisar cuando se confirme la fecha real.',
+      list: centrosConPteFecha.map(c=>`${c.centro} · ${c.denom}`)
+    });
+  }
+  if(!cpData){
+    warnings.push({
+      icon:'⚠️', title:'No se ha encontrado la pestaña de códigos postales por centro',
+      desc:'El resultado incluye el POM diario, pero la columna postal_codes se queda vacía en todas las filas.',
+      list: []
+    });
+  }
+
+  finalRows = rows;
+  statsInfo = {
+    totalCentros: centroKeys.length,
+    totalDias: allDays.length,
+    totalFilas: rows.length,
+    cierresConFechaExacta: centrosConReformaExacta.length,
+    conCP: !!cpData
+  };
+}
+
+// ---------- rendering ----------
+function renderStats(){
+  const wrap = document.getElementById('statsWrap');
+  wrap.innerHTML = '';
+  const items = [
+    ['Centros incluidos', statsInfo.totalCentros],
+    ['Días por centro', statsInfo.totalDias],
+    ['Filas totales', statsInfo.totalFilas.toLocaleString('es-ES')],
+    ['Cierres con fecha exacta de reforma', statsInfo.cierresConFechaExacta],
+  ];
+  items.forEach(([label,num])=>{
+    const d = document.createElement('div'); d.className='stat';
+    d.innerHTML = `<div class="num">${num}</div><div class="label">${label}</div>`;
+    wrap.appendChild(d);
+  });
+}
+
+function renderWarnings(){
+  const panel = document.getElementById('warnPanel');
+  if(!warnings.length){
+    panel.innerHTML = `<h3>✅ Sin avisos de calidad de datos</h3>`;
+    return;
+  }
+  panel.innerHTML = `<h3>⚠️ Avisos de calidad de datos (${warnings.length})</h3>` + warnings.map(w => `
+    <div class="warn-item">
+      <div class="wicon">${w.icon}</div>
+      <div>
+        <span class="wtitle">${w.title}</span>
+        <span class="wdesc">${w.desc}</span>
+        ${w.list.length ? `<div class="warn-list">${w.list.map(x=>`<div>${x}</div>`).join('')}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderPreview(filterText){
+  const table = document.getElementById('previewTable');
+  const filtered = filterText
+    ? finalRows.filter(r => String(r.mercadona_code).includes(filterText))
+    : finalRows;
+  const sample = filtered.slice(0, 200);
+  table.innerHTML = `
+    <thead><tr><th>mercadona_code</th><th>date</th><th>pom</th><th>morning_pom</th><th>postal_codes</th></tr></thead>
+    <tbody>
+      ${sample.map(r => `<tr>
+        <td>${r.mercadona_code}</td><td>${fmtDate(r.date)}</td>
+        <td>${r.pom}</td><td>${r.morning_pom}</td><td>${r.postal_codes}</td>
+      </tr>`).join('')}
+    </tbody>
+  `;
+}
+
+// ---------- downloads ----------
+function toExportRows(){
+  return finalRows.map(r => ({
+    mercadona_code: r.mercadona_code,
+    date: fmtDate(r.date),
+    pom: r.pom,
+    morning_pom: r.morning_pom,
+    postal_codes: r.postal_codes
+  }));
+}
+function downloadXlsx(){
+  const ws = XLSX.utils.json_to_sheet(toExportRows());
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'RESUMEN CENTRO DIA');
+  XLSX.writeFile(wb, `RESUMEN_CENTRO_DIA_PA27_${fmtDate(new Date())}.xlsx`);
+}
+function downloadCsv(){
+  const ws = XLSX.utils.json_to_sheet(toExportRows());
+  const csv = XLSX.utils.sheet_to_csv(ws);
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `RESUMEN_CENTRO_DIA_PA27_${fmtDate(new Date())}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ---------- file handling ----------
+function handleFile(file){
+  document.getElementById('progress').textContent = 'Procesando… (puede tardar unos segundos)';
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    setTimeout(()=>{
+      try{
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, {type:'array', cellDates:false});
+        processWorkbook(wb);
+        document.getElementById('dropzone').style.display='none';
+        document.getElementById('app').style.display='block';
+        renderStats();
+        renderWarnings();
+        renderPreview('');
+      }catch(err){
+        console.error(err);
+        document.getElementById('progress').textContent = '';
+        alert('No se ha podido procesar el Excel: ' + err.message);
+      }
+    }, 30);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+document.getElementById('fileInput').addEventListener('change', (e)=>{ if(e.target.files[0]) handleFile(e.target.files[0]); });
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', (e)=>{ e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', ()=> dz.classList.remove('drag'));
+dz.addEventListener('drop', (e)=>{
+  e.preventDefault(); dz.classList.remove('drag');
+  if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+document.getElementById('downloadXlsx').addEventListener('click', downloadXlsx);
+document.getElementById('downloadCsv').addEventListener('click', downloadCsv);
+document.getElementById('filterCentro').addEventListener('input', (e)=> renderPreview(e.target.value.trim()));
+
+document.getElementById('themeToggle').addEventListener('click', ()=>{
+  const html = document.documentElement;
+  const cur = html.getAttribute('data-theme');
+  html.setAttribute('data-theme', cur==='light' ? 'dark' : 'light');
+  localStorage.setItem('conversor_dia_theme', html.getAttribute('data-theme'));
+});
+(function(){
+  const saved = localStorage.getItem('conversor_dia_theme');
+  if(saved) document.documentElement.setAttribute('data-theme', saved);
+})();
+</script>
+
+</body>
+</html>

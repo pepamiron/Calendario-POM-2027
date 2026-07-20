@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendario POM 2027 · Movimientos de centros</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg: #12141a;
+    --panel: #1a1d26;
+    --panel-2: #20242f;
+    --panel-3: #262b38;
+    --border: #2c3140;
+    --text: #e8eaf0;
+    --text-dim: #8b91a3;
+    --accent: #6c8ef5;
+    --accent-bg: rgba(108,142,245,0.14);
+    --radius: 10px;
+    --mono: 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+
+    --c-nueva: #4f8ff5;      --c-nueva-bg: rgba(79,143,245,0.14);
+    --c-reapertura: #48b8c9; --c-reapertura-bg: rgba(72,184,201,0.14);
+    --c-ampliacion: #4fb477; --c-ampliacion-bg: rgba(79,180,119,0.14);
+    --c-reduccion: #d9b23f;  --c-reduccion-bg: rgba(217,178,63,0.14);
+    --c-reforma: #9aa1b0;    --c-reforma-bg: rgba(154,161,176,0.18);
+    --c-servicio: #d9574f;   --c-servicio-bg: rgba(217,87,79,0.14);
+    --c-temporal: #a06cf5;   --c-temporal-bg: rgba(160,108,245,0.14);
+    --c-temporal-cierre: #c15fa3; --c-temporal-cierre-bg: rgba(193,95,163,0.16);
+    --c-permanente: #5b8fc9; --c-permanente-bg: rgba(91,143,201,0.16);
+  }
+  [data-theme="light"]{
+    --bg: #f3f4f7; --panel: #ffffff; --panel-2: #f7f8fb; --panel-3: #eef0f5;
+    --border: #e1e4ec; --text: #1b1e27; --text-dim: #666e82;
+    --accent: #3f5fd9; --accent-bg: rgba(63,95,217,0.10);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    min-height:100vh;
+  }
+  header{
+    position:sticky; top:0; z-index:60;
+    background:var(--panel); border-bottom:1px solid var(--border);
+    padding:14px 20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  }
+  header h1{ font-size:17px; margin:0; font-weight:700; letter-spacing:-0.2px; white-space:nowrap; }
+  header h1 span{ color:var(--text-dim); font-weight:500; }
+  .spacer{flex:1;}
+  button, .btn{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    padding:8px 14px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;
+    display:inline-flex; align-items:center; gap:6px; transition:.15s; white-space:nowrap;
+  }
+  button:hover{ border-color:var(--accent); color:var(--accent); }
+  input[type=file]{ display:none; }
+  input[type=text]{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    padding:8px 10px; border-radius:8px; font-size:13px;
+  }
+  main{ padding:20px; max-width:1500px; margin:0 auto; }
+
+  #dropzone{
+    border:2px dashed var(--border); border-radius:16px; padding:60px 20px;
+    text-align:center; color:var(--text-dim); margin-top:40px; transition:.15s;
+  }
+  #dropzone.drag{ border-color:var(--accent); background:var(--accent-bg); }
+  #dropzone h2{ color:var(--text); font-size:20px; margin:0 0 8px; }
+  #dropzone p{ font-size:13px; margin:4px 0; }
+  #dropzone .btn{ margin-top:16px; display:inline-flex; }
+
+  .stats{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:10px; margin-bottom:16px;
+  }
+  .stat{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:11px 14px; border-left:3px solid var(--border-c, var(--border));
+  }
+  .stat .num{ font-size:22px; font-weight:800; font-family:var(--mono); }
+  .stat .label{ font-size:11px; color:var(--text-dim); margin-top:1px; }
+
+  .toolbar{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:12px 14px; margin-bottom:14px; display:flex; gap:8px; flex-wrap:wrap; align-items:flex-start;
+  }
+  .toolbar-row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; width:100%; }
+
+  /* multi-select dropdown */
+  .msel{ position:relative; }
+  .msel-btn{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    padding:8px 12px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .msel-btn:hover{ border-color:var(--accent); }
+  .msel-btn .count{
+    background:var(--accent); color:#fff; border-radius:20px; font-size:10.5px;
+    padding:1px 6px; font-weight:700;
+  }
+  .msel-panel{
+    display:none; position:absolute; top:calc(100% + 6px); left:0; z-index:70;
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    min-width:230px; max-width:300px; max-height:320px; overflow:auto;
+    box-shadow:0 12px 28px rgba(0,0,0,.35); padding:8px;
+  }
+  .msel.open .msel-panel{ display:block; }
+  .msel-search{
+    width:100%; margin-bottom:6px; padding:6px 8px; font-size:12px;
+    background:var(--panel-2); border:1px solid var(--border); border-radius:6px; color:var(--text);
+  }
+  .msel-opt{
+    display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:6px; cursor:pointer;
+    font-size:12.5px;
+  }
+  .msel-opt:hover{ background:var(--panel-2); }
+  .msel-opt input{ pointer-events:none; }
+  .msel-opt .swatch{ width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
+  .msel-opt .cnt{ margin-left:auto; color:var(--text-dim); font-size:10.5px; }
+  .msel-actions{ display:flex; justify-content:space-between; padding:4px 6px 2px; font-size:11px; }
+  .msel-actions a{ color:var(--accent); cursor:pointer; text-decoration:none; }
+  .msel-empty{ padding:8px 6px; font-size:12px; color:var(--text-dim); }
+
+  .toggle-verano{
+    display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:600;
+    background:var(--panel-2); border:1px solid var(--border); padding:8px 12px; border-radius:8px; cursor:pointer;
+  }
+  .toggle-verano.active{ background:var(--accent-bg); border-color:var(--accent); color:var(--accent); }
+
+  .legend{ display:flex; gap:8px; flex-wrap:wrap; font-size:11px; color:var(--text-dim); margin-top:8px; }
+  .legend .li{ display:flex; align-items:center; gap:5px; }
+  .legend .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+  .legend-toggle{
+    cursor:pointer; padding:4px 10px; border-radius:20px; border:1px solid var(--border);
+    background:var(--panel-2); transition:.12s; user-select:none;
+  }
+  .legend-toggle:hover{ border-color:var(--accent); }
+  .legend-toggle.active{ font-weight:700; }
+
+  .quarters{ display:flex; flex-direction:column; gap:18px; }
+  .quarter{
+    background:var(--panel-2); border:1px solid var(--border); border-radius:14px; padding:16px;
+  }
+  .quarter > h2{
+    margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:1px;
+    color:var(--accent); display:flex; align-items:center; gap:10px;
+  }
+  .quarter > h2 .qcount{
+    background:var(--accent-bg); color:var(--accent); padding:2px 9px; border-radius:20px;
+    font-size:11px; font-weight:700; letter-spacing:0;
+  }
+  .qmonths{ display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; }
+  .month{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:12px; display:flex; flex-direction:column; min-width:0;
+  }
+  .month h3{
+    margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:0.6px;
+    display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .month h3 small{ color:var(--text-dim); font-weight:500; text-transform:none; font-size:10.5px; }
+
+  .week-row{ display:flex; gap:8px; padding:6px 0; border-top:1px solid var(--border); align-items:flex-start; }
+  .week-row:first-of-type{ border-top:none; }
+  .week-row.empty{ opacity:.32; }
+  .week-date{
+    flex:0 0 44px; font-family:var(--mono); font-size:11px; color:var(--text-dim);
+    padding-top:4px; line-height:1.3;
+  }
+  .week-date b{ color:var(--text); display:block; font-size:13px; }
+  .week-events{ flex:1; display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .week-row.empty .week-events{ font-size:11px; color:var(--text-dim); padding-top:4px; }
+
+  .chip{
+    display:flex; flex-direction:column; gap:3px; font-size:11.5px; padding:5px 8px;
+    border-radius:7px; line-height:1.35; position:relative; cursor:grab;
+  }
+  .chip:active{ cursor:grabbing; }
+  .chip.dragging{ opacity:.35; }
+  .chip.modified{ outline:1.5px dashed currentColor; outline-offset:1px; }
+  .chip.chip-dragover{ box-shadow: 0 -2px 0 0 var(--accent) inset; }
+  .week-events.droptarget{ min-height:22px; border-radius:6px; transition:.1s; }
+  .week-events.droptarget.dragover{ background:var(--accent-bg); outline:1.5px dashed var(--accent); }
+  .dz-placeholder{ font-size:11px; color:var(--text-dim); }
+
+  #criteriaPanel{
+    width:100%; background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
+    padding:12px 14px; margin-top:6px;
+  }
+  #criteriaPanel .crit-item{ display:flex; gap:10px; padding:7px 0; border-top:1px solid var(--border); align-items:flex-start; }
+  #criteriaPanel .crit-item:first-child{ border-top:none; }
+  #criteriaPanel .crit-icon{ flex:0 0 22px; font-size:14px; text-align:center; }
+  #criteriaPanel .crit-title{ font-weight:700; font-size:12.5px; display:block; margin-bottom:1px; }
+  #criteriaPanel .crit-desc{ font-size:12px; color:var(--text-dim); line-height:1.45; }
+
+  .chip-line1{ display:flex; align-items:baseline; gap:6px; width:100%; }
+  .chip .icon{ flex:0 0 auto; }
+  .chip .cname{ font-weight:700; flex:0 0 auto; }
+  .chip .cdenom{ color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0; }
+  .chip .cmodel{ flex:0 0 auto; font-family:var(--mono); font-weight:700; }
+  .chip .sunmark{ flex:0 0 auto; }
+
+  .chip-line2{ display:flex; flex-wrap:wrap; gap:4px 8px; align-items:center; padding-left:20px; }
+  .chip .ctag{
+    flex:0 0 auto; font-size:9.5px; font-weight:700; text-transform:uppercase;
+    padding:1px 5px; border-radius:4px; background:rgba(255,255,255,0.12); letter-spacing:.3px;
+  }
+  .chip .absorcion{ flex:1 1 100%; min-width:0; font-size:10.5px; font-weight:600; opacity:.9; white-space:normal; overflow-wrap:break-word; word-break:break-word; }
+  .chip .badge-mini{ flex:0 0 auto; font-size:10.5px; font-weight:600; opacity:.9; white-space:normal; overflow-wrap:break-word; max-width:100%; }
+
+  .empty-hint{ text-align:center; color:var(--text-dim); padding:60px 20px; font-size:13px; }
+
+  .editable-cname{ cursor:pointer; text-decoration:underline dotted; text-underline-offset:2px; }
+  .tt-popover{
+    position:fixed; z-index:200; background:var(--panel); border:1px solid var(--border);
+    border-radius:10px; box-shadow:0 12px 28px rgba(0,0,0,.35); padding:6px; min-width:150px;
+  }
+  .tt-popover .tt-label{ font-size:10.5px; color:var(--text-dim); padding:4px 8px 2px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; }
+  .tt-popover .tt-opt{
+    display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:7px; cursor:pointer; font-size:13px;
+  }
+  .tt-popover .tt-opt:hover{ background:var(--panel-2); }
+  .tt-popover .tt-opt.active{ font-weight:700; color:var(--accent); }
+  .tt-popover .tt-opt .chk{ width:14px; flex:0 0 auto; }
+
+  @media (max-width: 900px){ .qmonths{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Calendario POM 2027 <span>· movimientos de centros</span></h1>
+  <div class="spacer"></div>
+  <span id="modifiedBadge" style="display:none;"></span>
+  <button id="undoBtn" style="display:none;">↺ Deshacer cambios</button>
+  <button id="exportBtn" style="display:none;">⬇️ Exportar cambios</button>
+  <button id="saveSessionBtn" style="display:none;">💾 Guardar sesión</button>
+  <label class="btn" for="loadSessionInput" id="loadSessionLabel" style="display:none;">📂 Cargar sesión</label>
+  <input type="file" id="loadSessionInput" accept=".json">
+  <a class="btn" href="https://docs.google.com/spreadsheets/d/1wQfPg10TCzr3L_DQ-ElPw_5T0kNfOoSqVbgAH8DohYY/edit?gid=2034162180#gid=2034162180" target="_blank" rel="noopener">📊 Tabla de origen (Drive)</a>
+  <label class="btn" for="fileInput">📂 Cargar Excel</label>
+  <input type="file" id="fileInput" accept=".xlsx,.xls">
+  <button id="themeToggle">🌙 / ☀️</button>
+</header>
+
+<main>
+
+  <div id="dropzone">
+    <h2>Sube el Excel de Dimensionado PA'27</h2>
+    <p>Arrastra aquí el fichero, o pulsa el botón para seleccionarlo.</p>
+    <p>Se leerá la pestaña de <b>Centro x POM</b> y se clasificarán automáticamente los movimientos semanales de cada centro.</p>
+    <label class="btn" for="fileInput">📂 Seleccionar Excel</label>
+  </div>
+
+  <div id="app" style="display:none;">
+    <div class="stats" id="statsWrap"></div>
+
+    <div class="toolbar">
+      <div class="toolbar-row">
+        <input type="text" id="searchBox" placeholder="Buscar centro o denominación…">
+        <div class="msel" id="mselZona" data-dim="zona"></div>
+        <div class="msel" id="mselRegion" data-dim="region"></div>
+        <div class="msel" id="mselTipoTienda" data-dim="tipoTienda"></div>
+        <div class="msel" id="mselMovimiento" data-dim="tipoMovimiento"></div>
+        <div class="msel" id="mselCentro" data-dim="centro"></div>
+        <button id="resetFilters">Limpiar filtros</button>
+      </div>
+      <div class="legend" id="legendWrap"></div>
+      <button id="criteriaToggle" class="btn" style="margin-top:8px;">ℹ️ Ver criterios de cada movimiento</button>
+      <div id="criteriaPanel" style="display:none;"></div>
+      <button id="reformaSinMovToggle" class="btn" style="margin-top:8px; display:none;"></button>
+      <div id="reformaSinMovPanel" style="display:none;"></div>
+    </div>
+
+    <div class="quarters" id="quartersWrap"></div>
+  </div>
+
+</main>
+
+<div id="tipoTiendaPopover" class="tt-popover" style="display:none;"></div>
+
+<script>
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const STORAGE_KEY = 'pom2027_events_v14';
+
+const MOV = {
+  nueva_implantacion: { label:'Nueva implantación',       color:'var(--c-nueva)',      bg:'var(--c-nueva-bg)',      icon:'🆕' },
+  reapertura:         { label:'Reapertura',                color:'var(--c-reapertura)', bg:'var(--c-reapertura-bg)', icon:'↩️' },
+  ampliacion:         { label:'Ampliación',                color:'var(--c-ampliacion)', bg:'var(--c-ampliacion-bg)', icon:'▲' },
+  reduccion:          { label:'Reducción',                 color:'var(--c-reduccion)',  bg:'var(--c-reduccion-bg)',  icon:'▼' },
+  cierre_reforma:     { label:'Cierre por reforma',        color:'var(--c-reforma)',    bg:'var(--c-reforma-bg)',    icon:'🔧' },
+  cierre_servicio:    { label:'Cierre de servicio',        color:'var(--c-servicio)',   bg:'var(--c-servicio-bg)',   icon:'⛔' },
+  temporal_apertura:  { label:'Tienda temporal (apertura)',color:'var(--c-temporal)',   bg:'var(--c-temporal-bg)',   icon:'⏳' },
+  temporal_cierre:    { label:'Tienda temporal (cierre)',  color:'var(--c-temporal-cierre)', bg:'var(--c-temporal-cierre-bg)', icon:'⌛' },
+};
+
+const MOV_VERANO_KEY = 'verano';
+const MOV_VERANO_CFG = { label:'Tienda de verano (patrón)', color:'#c9932a', bg:'rgba(245,199,108,0.18)', icon:'☀️' };
+const TEMPORAL_KEY = 'tienda_temporal';
+const TEMPORAL_CFG = { label:'Tienda temporal (apertura/cierre)', color:'var(--c-temporal)', bg:'var(--c-temporal-bg)', icon:'⏳' };
+const REFUERZO_KEY = 'refuerzo_reforma';
+const REFUERZO_CFG = { label:'Ampliación/Reducción por refuerzo de reforma', color:'var(--c-reforma)', bg:'var(--c-reforma-bg)', icon:'🔧' };
+const PERMANENTE_KEY = 'permanente';
+const PERMANENTE_CFG = { label:'Ampliación permanente (sin más cambios en el año)', color:'var(--c-permanente)', bg:'var(--c-permanente-bg)', icon:'📌' };
+
+// The filterable "tipo de movimiento" options shown to the user. Note 'reapertura' is intentionally
+// excluded as a standalone filter: selecting "Cierre por reforma" automatically pulls in its matching
+// reapertura in the calendar, since together they tell one story. Same idea for temporal open+close.
+const FILTER_MOVIMIENTOS = [
+  { key:'nueva_implantacion', ...MOVDEF('nueva_implantacion') },
+  { key:'ampliacion',         ...MOVDEF('ampliacion') },
+  { key:'reduccion',          ...MOVDEF('reduccion') },
+  { key:'cierre_reforma',     ...MOVDEF('cierre_reforma') },
+  { key:'cierre_servicio',    ...MOVDEF('cierre_servicio') },
+  { key:TEMPORAL_KEY,         ...TEMPORAL_CFG },
+  { key:MOV_VERANO_KEY,       ...MOV_VERANO_CFG },
+  { key:REFUERZO_KEY,         ...REFUERZO_CFG },
+  { key:PERMANENTE_KEY,       ...PERMANENTE_CFG },
+];
+function MOVDEF(k){ return { label: MOV[k].label, color: MOV[k].color, bg: MOV[k].bg, icon: MOV[k].icon }; }
+
+let allEvents = [];
+let filtered = [];
+let eventsByDate = {};
+let weekAnchors = [];
+let reformaSinMovimiento = []; // centers flagged with a REFORMA date but zero detected movements
+
+// active filter state
+const filters = {
+  search: '',
+  zona: new Set(),
+  region: new Set(),
+  tipoTienda: new Set(),
+  tipoMovimiento: new Set(),
+  centro: new Set()
+};
+
+function excelToJSDate(v){
+  if (v instanceof Date) return v;
+  if (typeof v === 'number'){
+    const utc_days = Math.floor(v - 25569);
+    const utc_value = utc_days * 86400;
+    return new Date(utc_value * 1000);
+  }
+  return null;
+}
+function fmtDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function fmtDateHuman(d){ return d.getDate()+' '+MONTHS[d.getMonth()].toLowerCase()+' '+d.getFullYear(); }
+function normalizeHeader(s){
+  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
+}
+function normalizeTipoTienda(v){
+  if(v===null || v===undefined || v==='') return 'Desconocido';
+  const s = String(v).trim().toLowerCase();
+  if(s==='tienda') return 'Tienda';
+  if(s==='colmena') return 'Colmena';
+  if(s==='panal') return 'Panal';
+  return String(v).trim();
+}
+
+function findSheet(wb){
+  let name = wb.SheetNames.find(n => normalizeHeader(n) === normalizeHeader('5. Centro x POM'));
+  if(name) return name;
+  name = wb.SheetNames.find(n => normalizeHeader(n).includes('CENTRO X POM') || normalizeHeader(n).includes('POM'));
+  if(name) return name;
+  // fallback: find any sheet whose some row contains a 'CENTRO' header cell
+  for(const n of wb.SheetNames){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:true, defval:null, range:0});
+    for(let r=0; r<Math.min(10, rows.length); r++){
+      if(rows[r] && rows[r].some(c => normalizeHeader(c)==='CENTRO')) return n;
+    }
+  }
+  return wb.SheetNames[0];
+}
+
+function buildColumnMap(headerRow){
+  const map = {};
+  const aliases = {
+    centro: ['CENTRO'],
+    denom: ['DENOMINACION'],
+    poblacion: ['POBLACION'],
+    provincia: ['PROVINCIA'],
+    zona: ['ZONA'],
+    region: ['REGION'],
+    agrupacion: ['AGRUPACION'],
+    reforma: ['REFORMA (FECHA)','REFORMA'],
+    tipoTienda: ['TIPO TIENDA','TIPO DE TIENDA','NSD']
+  };
+  headerRow.forEach((h, idx) => {
+    const nh = normalizeHeader(h);
+    if(!nh) return;
+    for(const key in aliases){
+      if(map[key] !== undefined) continue;
+      if(aliases[key].some(a => nh === a || nh.includes(a))){ map[key] = idx; }
+    }
+  });
+  return map;
+}
+
+function findCPCentroSheet(wb){
+  for(const name of wb.SheetNames){
+    let rows;
+    try{ rows = XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1, raw:true, defval:null}); }catch(e){ continue; }
+    for(let r=0; r<Math.min(10, rows.length); r++){
+      const row = rows[r];
+      if(!row) continue;
+      const hasPostal = row.some(c => normalizeHeader(c)==='POSTAL_CODE');
+      const centroIdx = row.findIndex(c => normalizeHeader(c)==='CENTRO');
+      if(hasPostal && centroIdx > -1){
+        return { sheetName: name, headerRowIdx: r, centroMarkerCol: centroIdx };
+      }
+    }
+  }
+  return null;
+}
+
+function parseCPCentroSheet(wb){
+  const info = findCPCentroSheet(wb);
+  if(!info) return null;
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[info.sheetName], {header:1, raw:true, defval:null});
+  const headerRow = rows[info.headerRowIdx];
+  const postalColIdx = headerRow.findIndex(c => normalizeHeader(c)==='POSTAL_CODE');
+  if(postalColIdx === -1) return null;
+
+  let centroDateStart = -1;
+  for(let c=info.centroMarkerCol; c<headerRow.length; c++){
+    const d = excelToJSDate(headerRow[c]);
+    if(d && d.getFullYear() > 2015 && d.getFullYear() < 2100){ centroDateStart = c; break; }
+  }
+  if(centroDateStart === -1) return null;
+
+  const weekDates = [];
+  for(let c=centroDateStart; c<headerRow.length; c++) weekDates.push(excelToJSDate(headerRow[c]));
+  const dateToIndex = {};
+  weekDates.forEach((d,i) => { if(d) dateToIndex[fmtDate(d)] = i; });
+
+  const cpRows = [];
+  for(let r=info.headerRowIdx+1; r<rows.length; r++){
+    const row = rows[r];
+    if(!row) continue;
+    const postal = row[postalColIdx];
+    if(postal===null || postal===undefined || postal==='') continue;
+    const centros = [];
+    for(let c=centroDateStart; c<row.length; c++){
+      const v = row[c];
+      centros.push(v===null||v===undefined||v===''? null : String(v).trim());
+    }
+    cpRows.push({ postal, centros });
+  }
+  return { weekDates, dateToIndex, rows: cpRows };
+}
+
+// For a closing/reopening event, work out which center(s) absorb (or return) the postal codes.
+// refWeekKey = the week whose assignment we treat as "normal" (the week before closing, or the closing week itself for a reapertura's "during closure" reference).
+// targetWeekKey = the week whose assignment we want to know (the week the closure/absorption actually takes effect).
+function computeAbsorcion(cpData, centro, refWeekKey, direction){
+  // refWeekKey = a week we know `centro` owns the CPs (last active week before closing, if direction=+1;
+  //              or the reopening week itself, if direction=-1).
+  // direction:  +1 = look forward from refWeekKey to find where the CPs go once they leave `centro`.
+  //             -1 = look backward from refWeekKey to find who was covering the CPs just before `centro` got them back.
+  // A small search window (rather than just the single adjacent week) is needed because the CP-assignment
+  // sheet and the POM sheet don't always change on exactly the same week — there can be a week or two of lag.
+  if(!cpData) return null;
+  const refIdx = cpData.dateToIndex[refWeekKey];
+  if(refIdx === undefined) return null;
+  const centroStr = String(centro);
+  const cps = cpData.rows.filter(r => r.centros[refIdx] === centroStr);
+  if(!cps.length) return null;
+
+  const WINDOW = 8;
+  const groups = {};
+  cps.forEach(r => {
+    let dest = null;
+    for(let step=1; step<=WINDOW; step++){
+      const idx = refIdx + step*direction;
+      if(idx < 0 || idx >= r.centros.length) break;
+      const v = r.centros[idx];
+      if(v !== null && v !== centroStr){ dest = v; break; }
+    }
+    if(dest === null) return;
+    (groups[dest] = groups[dest] || []).push(r.postal);
+  });
+
+  const total = cps.length;
+  const entries = Object.entries(groups).map(([c,postales]) => ({ centro:c, count:postales.length, postales: postales.sort((a,b)=>a-b) }))
+    .sort((a,b)=> b.count-a.count);
+  if(!entries.length) return null;
+  return { totalCps: total, destinos: entries };
+}
+
+
+function parseWorkbook(wb){
+  const sheetName = findSheet(wb);
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true, defval:null});
+
+  // locate header row: first row containing a 'CENTRO' cell
+  let headerRowIdx = rows.findIndex(row => row && row.some(c => normalizeHeader(c)==='CENTRO'));
+  if(headerRowIdx === -1) headerRowIdx = 2;
+  const headerRow = rows[headerRowIdx];
+  const colMap = buildColumnMap(headerRow);
+
+  // first date column: first column after the fixed columns whose header parses to a plausible date
+  let firstDateCol = -1;
+  for(let c=0; c<headerRow.length; c++){
+    const d = excelToJSDate(headerRow[c]);
+    if(d && d.getFullYear() > 2015 && d.getFullYear() < 2100){ firstDateCol = c; break; }
+  }
+  if(firstDateCol === -1){ alert('No se han encontrado columnas de semanas (fechas) en la cabecera.'); return []; }
+
+  const weekDates = [];
+  for(let c=firstDateCol; c<headerRow.length; c++){
+    const d = excelToJSDate(headerRow[c]);
+    weekDates.push(d);
+  }
+  weekAnchors = weekDates.filter(d=>d).sort((a,b)=>a-b);
+
+  const events = [];
+  let idCounter = 0;
+  for(let r=headerRowIdx+1; r<rows.length; r++){
+    const row = rows[r];
+    if(!row) continue;
+    const centroVal = colMap.centro !== undefined ? row[colMap.centro] : null;
+    if(centroVal === null || centroVal === undefined || centroVal === '') continue;
+
+    const vals = [];
+    for(let c=firstDateCol; c<row.length; c++) vals.push(row[c]);
+    const numVals = vals.map(v => (typeof v === 'number') ? v : (v===null||v===undefined ? null : Number(v)));
+    if(numVals.every(v => !v)) continue; // all null/0 -> no plan for this center, skip entirely
+
+    const active = numVals.map(v => (v !== null && v !== undefined && v > 0));
+    const firstActiveIdx = active.findIndex(a => a);
+    if(firstActiveIdx === -1) continue;
+
+    let hasCloseAfter = false;
+    for(let i=firstActiveIdx+1; i<active.length; i++){
+      if(active[i-1] && !active[i]) hasCloseAfter = true;
+    }
+    const isTemporal = firstActiveIdx > 0 && hasCloseAfter;
+
+    const centro = centroVal;
+    const denom = colMap.denom !== undefined ? (row[colMap.denom] || '') : '';
+    const poblacion = colMap.poblacion !== undefined ? (row[colMap.poblacion] || '') : '';
+    const provincia = colMap.provincia !== undefined ? (row[colMap.provincia] || '') : '';
+    const zona = colMap.zona !== undefined && row[colMap.zona] !== null && row[colMap.zona] !== undefined ? String(row[colMap.zona]) : '';
+    const region = colMap.region !== undefined ? (row[colMap.region] || '') : '';
+    const agrupacion = colMap.agrupacion !== undefined ? (row[colMap.agrupacion] || '') : '';
+    const reforma = colMap.reforma !== undefined ? excelToJSDate(row[colMap.reforma]) : null;
+    const tipoTienda = normalizeTipoTienda(colMap.tipoTienda !== undefined ? row[colMap.tipoTienda] : null);
+
+    const centerEvents = [];
+    let prev = numVals[0] || 0;
+    let prevActive = active[0];
+    for(let i=1; i<numVals.length; i++){
+      const cur = numVals[i] || 0;
+      const curActive = active[i];
+      if(cur !== prev){
+        let tipoMovimiento = null;
+        if(!prevActive && curActive){
+          if(isTemporal) tipoMovimiento = 'temporal_apertura';
+          else if(i === firstActiveIdx) tipoMovimiento = 'nueva_implantacion';
+          else tipoMovimiento = 'reapertura';
+        } else if(prevActive && !curActive){
+          const reopensLater = active.slice(i).some(a=>a);
+          if(isTemporal) tipoMovimiento = 'temporal_cierre';
+          else if(reopensLater) tipoMovimiento = 'cierre_reforma';
+          else tipoMovimiento = 'cierre_servicio';
+        } else if(prevActive && curActive){
+          tipoMovimiento = cur > prev ? 'ampliacion' : 'reduccion';
+        }
+        if(tipoMovimiento && weekDates[i]){
+          centerEvents.push({
+            id: 'ev' + (idCounter++),
+            centro, denom, poblacion, provincia, zona, region, agrupacion, tipoTienda,
+            reforma, fecha: weekDates[i], from: prev, to: cur, tipoMovimiento, esVerano:false,
+            fechaOriginal: null, modified: false
+          });
+        }
+      }
+      prev = cur; prevActive = curActive;
+    }
+
+    const hasSummerUp = centerEvents.some(e => e.tipoMovimiento==='ampliacion' && [4,5,6].includes(e.fecha.getMonth()));
+    const hasSummerDown = centerEvents.some(e => e.tipoMovimiento==='reduccion' && [7,8].includes(e.fecha.getMonth()));
+    if(hasSummerUp && hasSummerDown){
+      centerEvents.forEach(e => {
+        if((e.tipoMovimiento==='ampliacion' && [4,5,6].includes(e.fecha.getMonth())) ||
+           (e.tipoMovimiento==='reduccion' && [7,8].includes(e.fecha.getMonth()))){
+          e.esVerano = true;
+        }
+      });
+    }
+
+    events.push(...centerEvents);
+  }
+
+  const cpData = parseCPCentroSheet(wb);
+  if(cpData){
+    events.forEach(e => {
+      if(!['cierre_reforma','cierre_servicio','temporal_cierre','reapertura','temporal_apertura'].includes(e.tipoMovimiento)) return;
+      const closeWeekKey = fmtDate(e.fecha);
+      const idxOfThisWeek = weekAnchors.findIndex(d => fmtDate(d) === closeWeekKey);
+      if(e.tipoMovimiento === 'reapertura'){
+        // centro owns the CPs again as of closeWeekKey (the reopening week); look backward
+        // to find who was covering them, tolerating a lag between the CP sheet and the POM sheet.
+        e.absorcion = computeAbsorcion(cpData, e.centro, closeWeekKey, -1);
+        if(e.absorcion) e.absorcion.modo = 'recupera';
+      } else if(e.tipoMovimiento === 'temporal_apertura'){
+        // a brand-new temporary store: it takes over CPs from whoever had them right before it opened.
+        e.absorcion = computeAbsorcion(cpData, e.centro, closeWeekKey, -1);
+        if(e.absorcion) e.absorcion.modo = 'recibe';
+      } else {
+        if(idxOfThisWeek <= 0) return;
+        const prevWeekKey = fmtDate(weekAnchors[idxOfThisWeek-1]);
+        // centro still owned the CPs the week before closing; look forward to find where they go.
+        e.absorcion = computeAbsorcion(cpData, e.centro, prevWeekKey, +1);
+        if(e.absorcion) e.absorcion.modo = 'asume';
+      }
+    });
+  }
+
+  // Mark the ampliación/reducción movements in the absorbing center that are actually a consequence
+  // of covering (or handing back) another store's reform closure, so they can be spotted and filtered
+  // the same way as the "tienda de verano" pattern.
+  const eventsByCentro = {};
+  events.forEach(e => { const k = String(e.centro); (eventsByCentro[k] = eventsByCentro[k]||[]).push(e); });
+  const REFUERZO_WINDOW_WEEKS = 5;
+  function findReinforcementEvent(centroKey, tipo, fromDate){
+    const list = eventsByCentro[centroKey] || [];
+    const fromTime = fromDate.getTime();
+    const maxTime = fromTime + REFUERZO_WINDOW_WEEKS*7*24*3600*1000;
+    const candidates = list.filter(e => e.tipoMovimiento===tipo && !e.refuerzoReforma && e.fecha.getTime()>=fromTime && e.fecha.getTime()<=maxTime);
+    candidates.sort((a,b)=>a.fecha-b.fecha);
+    return candidates[0] || null;
+  }
+  events.forEach(e => {
+    if(e.tipoMovimiento === 'cierre_reforma' && e.absorcion){
+      e.absorcion.destinos.forEach(d => {
+        const match = findReinforcementEvent(d.centro, 'ampliacion', e.fecha);
+        if(match){ match.refuerzoReforma = true; match.refuerzoInfo = { origen: e.centro, motivo:'cierre' }; }
+      });
+    }
+    if(e.tipoMovimiento === 'reapertura' && e.absorcion){
+      e.absorcion.destinos.forEach(d => {
+        const match = findReinforcementEvent(d.centro, 'reduccion', e.fecha);
+        if(match){ match.refuerzoReforma = true; match.refuerzoInfo = { origen: e.centro, motivo:'reapertura' }; }
+      });
+    }
+  });
+
+  // Mark an "Ampliación" as permanent when it's the last movement of the year for that center —
+  // i.e. the model goes up and is never touched again for the rest of 2027.
+  Object.values(eventsByCentro).forEach(list => {
+    const sorted = list.slice().sort((a,b)=>a.fecha-b.fecha);
+    const last = sorted[sorted.length-1];
+    if(last && last.tipoMovimiento === 'ampliacion') last.permanente = true;
+  });
+
+  // Centers flagged with a REFORMA date in the source sheet but with zero detected weekly
+  // movements — these won't show up anywhere in the calendar, so surface them separately.
+  const centrosConMovimiento = new Set(events.map(e => String(e.centro)));
+  reformaSinMovimiento = [];
+  for(let r=headerRowIdx+1; r<rows.length; r++){
+    const row = rows[r];
+    if(!row) continue;
+    const centroVal = colMap.centro !== undefined ? row[colMap.centro] : null;
+    if(centroVal === null || centroVal === undefined || centroVal === '') continue;
+    if(centrosConMovimiento.has(String(centroVal))) continue;
+    const reformaRaw = colMap.reforma !== undefined ? row[colMap.reforma] : null;
+    const rawStr = (reformaRaw===null || reformaRaw===undefined) ? '' : String(reformaRaw).trim();
+    if(!rawStr || rawStr.toUpperCase() === '#N/A') continue;
+    const reformaDate = excelToJSDate(reformaRaw);
+    let modeloActual = null;
+    for(let c=firstDateCol; c<row.length; c++){ if(row[c]!==null && row[c]!==undefined){ modeloActual = row[c]; break; } }
+    reformaSinMovimiento.push({
+      centro: centroVal,
+      denom: colMap.denom !== undefined ? (row[colMap.denom] || '') : '',
+      poblacion: colMap.poblacion !== undefined ? (row[colMap.poblacion] || '') : '',
+      zona: colMap.zona !== undefined && row[colMap.zona] !== null && row[colMap.zona] !== undefined ? String(row[colMap.zona]) : '',
+      region: colMap.region !== undefined ? (row[colMap.region] || '') : '',
+      reformaLabel: reformaDate ? fmtDateHuman(reformaDate) : rawStr,
+      modeloActual
+    });
+  }
+
+  return events;
+}
+
+function buildIndexes(){
+  eventsByDate = {};
+  filtered.forEach(ev => {
+    const key = fmtDate(ev.fecha);
+    if(!eventsByDate[key]) eventsByDate[key] = [];
+    eventsByDate[key].push(ev);
+  });
+}
+
+function matchesFilters(ev, excludeDim){
+  if(filters.search && excludeDim!=='search'){
+    const q = filters.search;
+    if(!(String(ev.centro).toLowerCase().includes(q) || String(ev.denom).toLowerCase().includes(q) || String(ev.poblacion).toLowerCase().includes(q))) return false;
+  }
+  if(excludeDim!=='zona' && filters.zona.size && !filters.zona.has(ev.zona)) return false;
+  if(excludeDim!=='region' && filters.region.size && !filters.region.has(ev.region)) return false;
+  if(excludeDim!=='tipoTienda' && filters.tipoTienda.size && !filters.tipoTienda.has(ev.tipoTienda)) return false;
+  if(excludeDim!=='tipoMovimiento' && filters.tipoMovimiento.size){
+    const set = filters.tipoMovimiento;
+    let match = set.has(ev.tipoMovimiento);
+    if(!match && set.has(TEMPORAL_KEY) && (ev.tipoMovimiento==='temporal_apertura' || ev.tipoMovimiento==='temporal_cierre')) match = true;
+    if(!match && set.has(MOV_VERANO_KEY) && ev.esVerano) match = true;
+    if(!match && set.has(REFUERZO_KEY) && ev.refuerzoReforma) match = true;
+    if(!match && set.has(PERMANENTE_KEY) && ev.permanente) match = true;
+    if(!match && set.has('cierre_reforma') && ev.tipoMovimiento==='reapertura') match = true;
+    if(!match) return false;
+  }
+  if(excludeDim!=='centro' && filters.centro.size && !filters.centro.has(String(ev.centro))) return false;
+  return true;
+}
+
+function applyFilters(){
+  filters.search = document.getElementById('searchBox').value.trim().toLowerCase();
+  filtered = allEvents.filter(ev => matchesFilters(ev, null));
+  buildIndexes();
+  renderStats();
+  renderLegend();
+  renderFilterPanels();
+  renderCalendar();
+  updateEditUI();
+}
+
+function updateEditUI(){
+  const n = countModified();
+  const badge = document.getElementById('modifiedBadge');
+  const undoBtn = document.getElementById('undoBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  if(n > 0){
+    badge.style.display = 'inline-flex';
+    badge.textContent = `✎ ${n} cambio${n===1?'':'s'} sin exportar`;
+    badge.style.cssText += 'display:inline-flex;align-items:center;font-size:12px;font-weight:700;color:var(--accent);background:var(--accent-bg);padding:6px 12px;border-radius:20px;';
+    undoBtn.style.display = 'inline-flex';
+    exportBtn.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+    undoBtn.style.display = 'none';
+    exportBtn.style.display = 'none';
+  }
+}
+
+function renderStats(){
+  const centros = new Set(filtered.map(e=>e.centro)).size;
+  const semanas = Object.keys(eventsByDate).length;
+
+  const wrap = document.getElementById('statsWrap');
+  wrap.innerHTML = '';
+  const mainStats = [
+    ['Centros con movimiento', centros, 'var(--accent)'],
+    ['Semanas con movimiento', semanas, 'var(--accent)'],
+  ];
+  mainStats.forEach(([label,num,color])=>{
+    const d = document.createElement('div'); d.className='stat'; d.style.setProperty('--border-c', color);
+    d.innerHTML = `<div class="num" style="color:${color}">${num}</div><div class="label">${label}</div>`;
+    wrap.appendChild(d);
+  });
+  FILTER_MOVIMIENTOS.forEach(({key,label,icon,color})=>{
+    let num;
+    if(key === TEMPORAL_KEY) num = filtered.filter(e=>e.tipoMovimiento==='temporal_apertura'||e.tipoMovimiento==='temporal_cierre').length;
+    else if(key === MOV_VERANO_KEY) num = filtered.filter(e=>e.esVerano).length;
+    else if(key === REFUERZO_KEY) num = filtered.filter(e=>e.refuerzoReforma).length;
+    else if(key === PERMANENTE_KEY) num = filtered.filter(e=>e.permanente).length;
+    else num = filtered.filter(e=>e.tipoMovimiento===key).length;
+    const d = document.createElement('div'); d.className='stat'; d.style.setProperty('--border-c', color);
+    d.innerHTML = `<div class="num" style="color:${color}">${num}</div><div class="label">${icon} ${label}</div>`;
+    wrap.appendChild(d);
+  });
+}
+
+function renderLegend(){
+  const wrap = document.getElementById('legendWrap');
+  wrap.innerHTML = FILTER_MOVIMIENTOS.map(({key,label,color,bg,icon}) => {
+    const active = filters.tipoMovimiento.has(key);
+    return `<span class="li legend-toggle ${active?'active':''}" data-key="${key}" style="${active ? `background:${bg};border-color:${color};color:${color};` : ''}">
+      <span class="dot" style="background:${color}"></span>${icon} ${label}
+    </span>`;
+  }).join('');
+  wrap.querySelectorAll('.legend-toggle').forEach(el => {
+    el.addEventListener('click', () => {
+      const key = el.getAttribute('data-key');
+      if(filters.tipoMovimiento.has(key)) filters.tipoMovimiento.delete(key);
+      else filters.tipoMovimiento.add(key);
+      applyFilters();
+    });
+  });
+}
+
+// ---- multi-select filter components ----
+const DIM_CONFIG = {
+  zona:            { label:'Zona',        getValue: e=>e.zona,          display: v=>'Zona '+v },
+  region:          { label:'Región',      getValue: e=>e.region,        display: v=>v },
+  tipoTienda:      { label:'Tipo tienda', getValue: e=>e.tipoTienda,    display: v=>v },
+  tipoMovimiento:  { label:'Movimiento',  getValue: e=>e.tipoMovimiento,
+                      display: v=>{ const f=FILTER_MOVIMIENTOS.find(m=>m.key===v); return f? f.icon+' '+f.label : v; },
+                      color: v=>{ const f=FILTER_MOVIMIENTOS.find(m=>m.key===v); return f&&f.color; } },
+  centro:          { label:'Centro',      getValue: e=>String(e.centro),display: v=>v, searchable:true }
+};
+
+function getMovimientoFacetCounts(){
+  const subset = allEvents.filter(ev => matchesFilters(ev, 'tipoMovimiento'));
+  const counts = {};
+  FILTER_MOVIMIENTOS.forEach(({key}) => {
+    if(key === TEMPORAL_KEY){
+      counts[key] = subset.filter(e => e.tipoMovimiento==='temporal_apertura' || e.tipoMovimiento==='temporal_cierre').length;
+    } else if(key === MOV_VERANO_KEY){
+      counts[key] = subset.filter(e => e.esVerano).length;
+    } else if(key === REFUERZO_KEY){
+      counts[key] = subset.filter(e => e.refuerzoReforma).length;
+    } else if(key === PERMANENTE_KEY){
+      counts[key] = subset.filter(e => e.permanente).length;
+    } else {
+      counts[key] = subset.filter(e => e.tipoMovimiento===key).length;
+    }
+  });
+  return FILTER_MOVIMIENTOS.map(({key}) => [key, counts[key]]);
+}
+
+function getFacetOptions(dim){
+  const cfg = DIM_CONFIG[dim];
+  const subset = allEvents.filter(ev => matchesFilters(ev, dim));
+  const counts = {};
+  subset.forEach(ev => {
+    const v = cfg.getValue(ev);
+    if(v===''||v===null||v===undefined) return;
+    counts[v] = (counts[v]||0) + 1;
+  });
+  // ensure currently-selected values remain listed even if 0 in this facet
+  filters[dim].forEach(v => { if(!(v in counts)) counts[v] = 0; });
+  let entries = Object.entries(counts);
+  if(dim==='zona'){
+    entries.sort((a,b)=>{
+      const na=parseFloat(a[0]), nb=parseFloat(b[0]);
+      if(!isNaN(na)&&!isNaN(nb)) return na-nb;
+      return a[0].localeCompare(b[0]);
+    });
+  } else if(dim==='centro'){
+    entries.sort((a,b)=> parseFloat(a[0])-parseFloat(b[0]));
+  } else {
+    entries.sort((a,b)=> a[0].localeCompare(b[0]));
+  }
+  return entries; // [ [value, count], ... ]
+}
+
+function renderFilterPanels(){
+  Object.keys(DIM_CONFIG).forEach(dim => renderMsel(dim));
+}
+
+function renderMsel(dim){
+  const cfg = DIM_CONFIG[dim];
+  const container = document.getElementById('msel' + dim.charAt(0).toUpperCase() + dim.slice(1));
+  if(!container) return;
+  const wasOpen = container.classList.contains('open');
+  const searchVal = container.__searchVal || '';
+  const options = dim === 'tipoMovimiento' ? getMovimientoFacetCounts() : getFacetOptions(dim);
+  const selectedCount = filters[dim].size;
+
+  let optionsHtml = options
+    .filter(([v]) => !cfg.searchable || !searchVal || String(cfg.display(v)).toLowerCase().includes(searchVal.toLowerCase()))
+    .map(([v,count]) => {
+      const checked = filters[dim].has(v) ? 'checked' : '';
+      const swatch = cfg.color ? `<span class="swatch" style="background:${cfg.color(v)}"></span>` : '';
+      return `<label class="msel-opt"><input type="checkbox" data-dim="${dim}" data-val="${String(v).replace(/"/g,'&quot;')}" ${checked}>${swatch}<span>${cfg.display(v)}</span><span class="cnt">${count}</span></label>`;
+    }).join('');
+  if(!optionsHtml) optionsHtml = `<div class="msel-empty">Sin opciones para el filtro actual</div>`;
+
+  container.innerHTML = `
+    <button class="msel-btn" type="button">${cfg.label}${selectedCount? `<span class="count">${selectedCount}</span>`:''} ▾</button>
+    <div class="msel-panel">
+      ${cfg.searchable ? `<input type="text" class="msel-search" placeholder="Buscar ${cfg.label.toLowerCase()}…" value="${searchVal}">` : ''}
+      <div class="msel-actions"><a data-act="all">Marcar todo</a><a data-act="none">Ninguno</a></div>
+      ${optionsHtml}
+    </div>
+  `;
+  if(wasOpen) container.classList.add('open');
+
+  container.querySelector('.msel-btn').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const isOpen = container.classList.contains('open');
+    document.querySelectorAll('.msel.open').forEach(el=>el.classList.remove('open'));
+    if(!isOpen) container.classList.add('open');
+  });
+  container.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const val = cb.getAttribute('data-val');
+      if(cb.checked) filters[dim].add(val); else filters[dim].delete(val);
+      applyFilters();
+    });
+  });
+  const searchInput = container.querySelector('.msel-search');
+  if(searchInput){
+    searchInput.addEventListener('click', e=>e.stopPropagation());
+    searchInput.addEventListener('input', (e)=>{
+      container.__searchVal = e.target.value;
+      renderMsel(dim);
+      container.classList.add('open');
+      container.querySelector('.msel-search').focus();
+      container.querySelector('.msel-search').setSelectionRange(9999,9999);
+    });
+  }
+  container.querySelector('[data-act="all"]').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    options.forEach(([v])=>filters[dim].add(v));
+    applyFilters();
+  });
+  container.querySelector('[data-act="none"]').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    filters[dim].clear();
+    applyFilters();
+  });
+}
+
+document.addEventListener('click', ()=>{ document.querySelectorAll('.msel.open').forEach(el=>el.classList.remove('open')); });
+
+// ---- calendar rendering ----
+// Orders the events of a single week so related movements sit next to each other
+// (e.g. a Cierre por reforma next to the reinforcement Ampliación it triggers the same week),
+// instead of a flat alphabetical-by-centro list. Ungrouped movements follow, ordered by type.
+const WEEK_SORT_TYPE_PRIORITY = {
+  nueva_implantacion:0, temporal_apertura:1, cierre_reforma:2, reapertura:3,
+  cierre_servicio:4, temporal_cierre:5, ampliacion:6, reduccion:7
+};
+function typeRank(e){ return WEEK_SORT_TYPE_PRIORITY[e.tipoMovimiento] ?? 9; }
+function pairKey(a,b){ return [String(a),String(b)].sort().join('_'); }
+
+function sortWeekEvents(evs){
+  const groups = {};
+  const standalone = [];
+  evs.forEach(e => {
+    let groupKey = null;
+    if(e.absorcion && e.absorcion.destinos && e.absorcion.destinos.length){
+      groupKey = pairKey(e.centro, e.absorcion.destinos[0].centro);
+    } else if(e.refuerzoReforma && e.refuerzoInfo){
+      groupKey = pairKey(e.centro, e.refuerzoInfo.origen);
+    }
+    if(groupKey){ (groups[groupKey] = groups[groupKey] || []).push(e); }
+    else standalone.push(e);
+  });
+
+  // A "group" only makes sense visually if it actually has 2+ members in this same week;
+  // a lone event that merely has absorcion info (destino center not present this same week)
+  // should just fall back to the standalone ordering.
+  const realGroupKeys = [];
+  Object.keys(groups).forEach(k => {
+    if(groups[k].length > 1) realGroupKeys.push(k);
+    else standalone.push(...groups[k]);
+  });
+
+  realGroupKeys.sort((a,b) => {
+    const minA = Math.min(...groups[a].map(e => Number(e.centro) || 0));
+    const minB = Math.min(...groups[b].map(e => Number(e.centro) || 0));
+    return minA - minB;
+  });
+
+  const byTypeThenCentro = (a,b) => {
+    const pa = typeRank(a), pb = typeRank(b);
+    if(pa !== pb) return pa - pb;
+    return String(a.centro).localeCompare(String(b.centro));
+  };
+
+  const orderedGroups = realGroupKeys.flatMap(k => groups[k].slice().sort(byTypeThenCentro));
+  const orderedStandalone = standalone.slice().sort(byTypeThenCentro);
+  return [...orderedGroups, ...orderedStandalone];
+}
+
+// If the person has manually reordered any event in this week, that manual order wins;
+// otherwise fall back to the automatic grouped ordering above.
+function orderEventsForWeek(evs){
+  const hasManual = evs.some(e => e.manualOrder !== undefined && e.manualOrder !== null);
+  if(!hasManual) return sortWeekEvents(evs);
+  const auto = sortWeekEvents(evs);
+  const autoIndex = new Map(auto.map((e,i)=>[e.id,i]));
+  return evs.slice().sort((a,b)=>{
+    const ma = (a.manualOrder===undefined||a.manualOrder===null) ? 1e9 : a.manualOrder;
+    const mb = (b.manualOrder===undefined||b.manualOrder===null) ? 1e9 : b.manualOrder;
+    if(ma !== mb) return ma - mb;
+    return autoIndex.get(a.id) - autoIndex.get(b.id);
+  });
+}
+
+// Reorders the events within a single week. If the dragged event is coming from a different
+// week, this also moves it (same bookkeeping as moveEventToWeek) before splicing it into place.
+function reorderWeek(weekKey, draggedId, targetId, dropAtEnd){
+  const dragged = allEvents.find(e => e.id === draggedId);
+  if(!dragged) return;
+  const currentEvs = orderEventsForWeek(eventsByDate[weekKey] || []);
+  const list = currentEvs.filter(e => e.id !== draggedId);
+
+  const prevWeekKey = fmtDate(dragged.fecha);
+  if(prevWeekKey !== weekKey){
+    if(!dragged.modified){ dragged.fechaOriginal = dragged.fecha; dragged.modified = true; }
+    const newDate = weekAnchors.find(d => fmtDate(d) === weekKey);
+    if(newDate) dragged.fecha = newDate;
+    if(dragged.fechaOriginal && fmtDate(dragged.fechaOriginal) === fmtDate(dragged.fecha)){
+      dragged.modified = false; dragged.fechaOriginal = null;
+    }
+  }
+
+  if(dropAtEnd || !targetId){
+    list.push(dragged);
+  } else {
+    const idx = list.findIndex(e => e.id === targetId);
+    if(idx === -1) list.push(dragged); else list.splice(idx, 0, dragged);
+  }
+  list.forEach((e,i) => { e.manualOrder = i; });
+  saveToStorage();
+  applyFilters();
+}
+
+function getWeeksOfMonth(monthIdx){ return weekAnchors.filter(d => d.getMonth() === monthIdx); }
+
+
+
+function renderCalendar(){
+  const wrap = document.getElementById('quartersWrap');
+  wrap.innerHTML = '';
+  const quarterLabels = ['T1 · Enero – Marzo','T2 · Abril – Junio','T3 · Julio – Septiembre','T4 · Octubre – Diciembre'];
+  for(let q=0; q<4; q++){
+    const monthsInQ = [q*3, q*3+1, q*3+2];
+    const qEvents = filtered.filter(e => monthsInQ.includes(e.fecha.getMonth())).length;
+
+    const qDiv = document.createElement('div');
+    qDiv.className = 'quarter';
+    const h2 = document.createElement('h2');
+    h2.innerHTML = `${quarterLabels[q]} <span class="qcount">${qEvents} movimientos</span>`;
+    qDiv.appendChild(h2);
+
+    const qMonths = document.createElement('div');
+    qMonths.className = 'qmonths';
+    monthsInQ.forEach(m => qMonths.appendChild(renderMonth(m)));
+    qDiv.appendChild(qMonths);
+    wrap.appendChild(qDiv);
+  }
+}
+
+function renderMonth(monthIdx){
+  const div = document.createElement('div');
+  div.className = 'month';
+  const weeks = getWeeksOfMonth(monthIdx);
+  const monthEventCount = filtered.filter(e => e.fecha.getMonth()===monthIdx).length;
+
+  const h3 = document.createElement('h3');
+  h3.innerHTML = `${MONTHS[monthIdx]} <small>${monthEventCount ? monthEventCount+' cambios' : 'sin cambios'}</small>`;
+  div.appendChild(h3);
+
+  if(!weeks.length){
+    const p = document.createElement('div'); p.className='empty-hint'; p.style.padding='20px 0'; p.textContent='Sin semanas de referencia';
+    div.appendChild(p);
+    return div;
+  }
+
+  weeks.forEach(weekDate => {
+    const key = fmtDate(weekDate);
+    const evs = orderEventsForWeek(eventsByDate[key] || []);
+    const row = document.createElement('div');
+    row.className = 'week-row' + (evs.length ? '' : ' empty');
+
+    const dEl = document.createElement('div');
+    dEl.className = 'week-date';
+    dEl.innerHTML = `<b>${weekDate.getDate()}</b>${MONTHS[weekDate.getMonth()].slice(0,3).toLowerCase()}`;
+    row.appendChild(dEl);
+
+    const evWrap = document.createElement('div');
+    evWrap.className = 'week-events droptarget';
+    evWrap.dataset.week = key;
+    if(evs.length){
+      evs.forEach(e => {
+        const cfg = MOV[e.tipoMovimiento] || {label:e.tipoMovimiento, color:'#999', bg:'rgba(150,150,150,.14)', icon:'•'};
+        const chip = document.createElement('div');
+        chip.className = 'chip' + (e.modified ? ' modified' : '');
+        chip.draggable = true;
+        chip.dataset.id = e.id;
+        chip.style.background = cfg.bg;
+        chip.style.color = cfg.color;
+        const tagHtml = (e.tipoTienda && e.tipoTienda !== 'Tienda') ? `<span class="ctag">${e.tipoTienda}</span>` : '';
+
+        function fmtCentros(destinos){
+          const nombres = destinos.map(d => d.centro);
+          if(nombres.length === 1) return `Centro ${nombres[0]}`;
+          return `Centros ${nombres.slice(0,-1).join(', ')} y ${nombres[nombres.length-1]}`;
+        }
+        let absHtml = '';
+        if(e.absorcion){
+          const verbo = e.absorcion.modo==='recupera' ? '↩ Recupera de' : (e.absorcion.modo==='recibe' ? '⇐ Recibe de' : '→ Asume');
+          absHtml = `<span class="absorcion">${verbo} ${fmtCentros(e.absorcion.destinos)}</span>`;
+        }
+        const refuerzoHtml = e.refuerzoReforma
+          ? `<span class="badge-mini">🔧 ${e.refuerzoInfo.motivo==='cierre' ? 'Refuerza reforma del centro' : 'Retira refuerzo del centro'} ${e.refuerzoInfo.origen}</span>`
+          : '';
+        const editHtml = e.modified ? `<span class="badge-mini">✎ Movido desde ${fmtDateHuman(e.fechaOriginal)}</span>` : '';
+        const line2Parts = [tagHtml, absHtml, refuerzoHtml, editHtml].filter(Boolean);
+        const line2Html = line2Parts.length ? `<div class="chip-line2">${line2Parts.join('')}</div>` : '';
+
+        chip.innerHTML = `
+          <div class="chip-line1">
+            <span class="icon">${cfg.icon}</span>
+            <span class="cname editable-cname" title="Clic para cambiar el tipo de tienda (${e.tipoTienda})">${e.centro}</span>
+            <span class="cdenom">${e.denom}${e.poblacion? ' · '+e.poblacion:''}</span>
+            <span class="cmodel">${e.from}→${e.to}</span>
+            ${e.esVerano ? '<span class="sunmark">☀️</span>' : ''}
+            ${e.permanente ? '<span class="sunmark" title="Ampliación permanente: sin más cambios en el año">📌</span>' : ''}
+          </div>
+          ${line2Html}
+        `;
+        let absTitle = '';
+        if(e.absorcion){
+          const list = e.absorcion.destinos.map(d=>`Centro ${d.centro}: CP ${d.postales.join(', ')}`).join(' · ');
+          if(e.absorcion.modo==='recupera'){
+            absTitle = `\nRecupera ${e.absorcion.totalCps} CP que durante el cierre cubría: ${list}`;
+          } else if(e.absorcion.modo==='recibe'){
+            absTitle = `\nAl abrir como tienda temporal, recibe ${e.absorcion.totalCps} CP que antes cubría: ${list}`;
+          } else if(e.tipoMovimiento === 'cierre_servicio'){
+            absTitle = `\nTras el cierre definitivo, ${e.absorcion.totalCps} CP pasan a: ${list}`;
+          } else {
+            absTitle = `\nDurante el cierre, ${e.absorcion.totalCps} CP pasan a: ${list}`;
+          }
+        }
+        let refuerzoTitle = '';
+        if(e.refuerzoReforma){
+          refuerzoTitle = e.refuerzoInfo.motivo==='cierre'
+            ? `\n🔧 Este ${e.tipoMovimiento==='ampliacion'?'incremento':'movimiento'} de modelo refuerza el cierre por reforma del centro ${e.refuerzoInfo.origen}`
+            : `\n🔧 Este ajuste de modelo retira el refuerzo tras la reapertura del centro ${e.refuerzoInfo.origen}`;
+        }
+        chip.title = `${cfg.label} · Zona ${e.zona} / ${e.region}${e.reforma? ' · Reforma: '+fmtDateHuman(e.reforma):''}`
+          + (e.modified ? `\nMovido desde la semana del ${fmtDateHuman(e.fechaOriginal)}` : '')
+          + absTitle
+          + refuerzoTitle
+          + `\nArrastra esta ficha a otra semana, o suéltala sobre otra ficha para reordenar dentro de la misma semana.`;
+        chip.addEventListener('dragstart', (ev)=>{
+          ev.dataTransfer.setData('text/plain', e.id);
+          ev.dataTransfer.effectAllowed = 'move';
+          setTimeout(()=>chip.classList.add('dragging'), 0);
+        });
+        chip.addEventListener('dragend', ()=> chip.classList.remove('dragging'));
+        chip.addEventListener('dragover', (ev)=>{
+          ev.preventDefault();
+          ev.stopPropagation();
+          chip.classList.add('chip-dragover');
+        });
+        chip.addEventListener('dragleave', ()=> chip.classList.remove('chip-dragover'));
+        chip.addEventListener('drop', (ev)=>{
+          ev.preventDefault();
+          ev.stopPropagation();
+          chip.classList.remove('chip-dragover');
+          evWrap.classList.remove('dragover');
+          const draggedId = ev.dataTransfer.getData('text/plain');
+          if(draggedId === e.id) return;
+          reorderWeek(evWrap.dataset.week, draggedId, e.id, false);
+        });
+        const cnameEl = chip.querySelector('.editable-cname');
+        cnameEl.addEventListener('click', (ev)=>{
+          ev.stopPropagation();
+          openTipoTiendaPicker(cnameEl, e.centro);
+        });
+        evWrap.appendChild(chip);
+      });
+    } else {
+      const ph = document.createElement('span'); ph.className='dz-placeholder'; ph.textContent='Sin cambios';
+      evWrap.appendChild(ph);
+    }
+    evWrap.addEventListener('dragover', (ev)=>{ ev.preventDefault(); evWrap.classList.add('dragover'); });
+    evWrap.addEventListener('dragleave', ()=> evWrap.classList.remove('dragover'));
+    evWrap.addEventListener('drop', (ev)=>{
+      ev.preventDefault();
+      evWrap.classList.remove('dragover');
+      const id = ev.dataTransfer.getData('text/plain');
+      reorderWeek(evWrap.dataset.week, id, null, true);
+    });
+    row.appendChild(evWrap);
+    div.appendChild(row);
+  });
+
+  return div;
+}
+
+// ---- editing: drag to move an event to another week ----
+function moveEventToWeek(id, newWeekKey){
+  const ev = allEvents.find(e => e.id === id);
+  if(!ev) return;
+  const newDate = weekAnchors.find(d => fmtDate(d) === newWeekKey);
+  if(!newDate) return;
+  if(fmtDate(ev.fecha) === newWeekKey) return; // dropped on same week, no-op
+  if(!ev.modified){
+    ev.fechaOriginal = ev.fecha;
+    ev.modified = true;
+  }
+  ev.fecha = newDate;
+  // if it now matches its original week again, un-mark as modified
+  if(ev.fechaOriginal && fmtDate(ev.fechaOriginal) === fmtDate(ev.fecha)){
+    ev.modified = false;
+    ev.fechaOriginal = null;
+  }
+  saveToStorage();
+  applyFilters();
+}
+
+function undoAllChanges(){
+  let count = 0;
+  allEvents.forEach(ev => {
+    if(ev.modified){ ev.fecha = ev.fechaOriginal; ev.modified = false; ev.fechaOriginal = null; count++; }
+  });
+  if(count){ saveToStorage(); applyFilters(); }
+}
+
+function exportChanges(){
+  const changed = allEvents.filter(e => e.modified);
+  if(!changed.length){ alert('No hay cambios manuales todavía. Arrastra una ficha a otra semana para moverla.'); return; }
+  const rows = changed.map(e => ({
+    'Centro': e.centro,
+    'Denominación': e.denom,
+    'Población': e.poblacion,
+    'Zona': e.zona,
+    'Región': e.region,
+    'Tipo de tienda': e.tipoTienda,
+    'Tipo de movimiento': (MOV[e.tipoMovimiento] && MOV[e.tipoMovimiento].label) || e.tipoMovimiento,
+    'Modelo anterior': e.from,
+    'Modelo nuevo': e.to,
+    'Semana original': fmtDateHuman(e.fechaOriginal),
+    'Semana movida a': fmtDateHuman(e.fecha)
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = Object.keys(rows[0]).map(k => ({wch: Math.max(k.length, 16)}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Cambios');
+  const stamp = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `cambios_calendario_pom_2027_${stamp}.xlsx`);
+}
+
+function countModified(){ return allEvents.filter(e=>e.modified).length; }
+
+function saveToStorage(){
+  try{
+    const payload = {
+      events: allEvents.map(ev=>({...ev, fecha: fmtDate(ev.fecha), reforma: ev.reforma?fmtDate(ev.reforma):null, fechaOriginal: ev.fechaOriginal?fmtDate(ev.fechaOriginal):null})),
+      weekAnchors: weekAnchors.map(fmtDate),
+      reformaSinMovimiento
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  }catch(err){}
+}
+
+// ---- file handling & persistence ----
+function showSessionButtons(){
+  document.getElementById('saveSessionBtn').style.display = 'inline-flex';
+  document.getElementById('loadSessionLabel').style.display = 'inline-flex';
+}
+
+function handleFile(file){
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array', cellDates:false});
+      const events = parseWorkbook(wb);
+      if(!events || !events.length){ alert('No se han detectado movimientos en el fichero.'); return; }
+      allEvents = events;
+      saveToStorage();
+      Object.keys(filters).forEach(k => { if(filters[k] instanceof Set) filters[k].clear(); });
+      document.getElementById('dropzone').style.display='none';
+      document.getElementById('app').style.display='block';
+      showSessionButtons();
+      renderLegend();
+      renderReformaSinMovimiento();
+      applyFilters();
+    }catch(err){
+      console.error(err);
+      alert('No se ha podido leer el Excel. Revisa que sea el fichero correcto.');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function loadFromStorage(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return false;
+    const parsed = JSON.parse(raw);
+    const evArr = parsed.events || [];
+    if(!evArr.length) return false;
+    allEvents = evArr.map(ev => ({
+      ...ev,
+      fecha:new Date(ev.fecha+'T00:00:00'),
+      reforma: ev.reforma? new Date(ev.reforma+'T00:00:00'):null,
+      fechaOriginal: ev.fechaOriginal ? new Date(ev.fechaOriginal+'T00:00:00') : null,
+      modified: !!ev.modified
+    }));
+    weekAnchors = (parsed.weekAnchors || []).map(d => new Date(d+'T00:00:00'));
+    if(!weekAnchors.length) weekAnchors = [...new Set(allEvents.map(e=>fmtDate(e.fecha)))].sort().map(d=>new Date(d+'T00:00:00'));
+    reformaSinMovimiento = parsed.reformaSinMovimiento || [];
+    document.getElementById('dropzone').style.display='none';
+    document.getElementById('app').style.display='block';
+    showSessionButtons();
+    renderLegend();
+    renderReformaSinMovimiento();
+    applyFilters();
+    return true;
+  }catch(e){ return false; }
+}
+
+// ---- save/load a full session file (portable backup, independent of browser localStorage) ----
+function saveSession(){
+  const payload = {
+    events: allEvents.map(ev=>({...ev, fecha: fmtDate(ev.fecha), reforma: ev.reforma?fmtDate(ev.reforma):null, fechaOriginal: ev.fechaOriginal?fmtDate(ev.fechaOriginal):null})),
+    weekAnchors: weekAnchors.map(fmtDate),
+    reformaSinMovimiento
+  };
+  const blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `sesion_calendario_pom_2027_${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function loadSessionFromFile(file){
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const parsed = JSON.parse(e.target.result);
+      const evArr = parsed.events || [];
+      if(!evArr.length){ alert('El fichero de sesión no contiene datos válidos.'); return; }
+      allEvents = evArr.map(ev => ({
+        ...ev,
+        fecha: new Date(ev.fecha+'T00:00:00'),
+        reforma: ev.reforma ? new Date(ev.reforma+'T00:00:00') : null,
+        fechaOriginal: ev.fechaOriginal ? new Date(ev.fechaOriginal+'T00:00:00') : null,
+        modified: !!ev.modified
+      }));
+      weekAnchors = (parsed.weekAnchors || []).map(d => new Date(d+'T00:00:00'));
+      if(!weekAnchors.length) weekAnchors = [...new Set(allEvents.map(e=>fmtDate(e.fecha)))].sort().map(d=>new Date(d+'T00:00:00'));
+      reformaSinMovimiento = parsed.reformaSinMovimiento || [];
+      saveToStorage();
+      Object.keys(filters).forEach(k => { if(filters[k] instanceof Set) filters[k].clear(); });
+      document.getElementById('dropzone').style.display='none';
+      document.getElementById('app').style.display='block';
+      showSessionButtons();
+      renderLegend();
+      renderReformaSinMovimiento();
+      applyFilters();
+    }catch(err){
+      console.error(err);
+      alert('No se ha podido leer el fichero de sesión. Revisa que sea un fichero exportado desde esta misma herramienta.');
+    }
+  };
+  reader.readAsText(file);
+}
+document.getElementById('saveSessionBtn').addEventListener('click', saveSession);
+document.getElementById('loadSessionInput').addEventListener('change', (e)=>{ if(e.target.files[0]) loadSessionFromFile(e.target.files[0]); });
+
+// ---- editing: tipo de tienda (Tienda / Colmena / Panal) ----
+const TIENDA_TYPES = ['Tienda','Colmena','Panal'];
+
+function setTipoTienda(centro, nuevoTipo){
+  const centroStr = String(centro);
+  let changed = 0;
+  allEvents.forEach(e => { if(String(e.centro) === centroStr && e.tipoTienda !== nuevoTipo){ e.tipoTienda = nuevoTipo; changed++; } });
+  reformaSinMovimiento.forEach(c => { if(String(c.centro) === centroStr) c.tipoTienda = nuevoTipo; });
+  if(changed){ saveToStorage(); applyFilters(); }
+  closeTipoTiendaPicker();
+}
+
+function openTipoTiendaPicker(anchorEl, centro){
+  const pop = document.getElementById('tipoTiendaPopover');
+  const centroStr = String(centro);
+  const current = (allEvents.find(e => String(e.centro)===centroStr) || {}).tipoTienda || 'Tienda';
+  pop.innerHTML = `
+    <div class="tt-label">Tipo de tienda · Centro ${centro}</div>
+    ${TIENDA_TYPES.map(t => `
+      <div class="tt-opt ${t===current?'active':''}" data-tipo="${t}">
+        <span class="chk">${t===current?'✓':''}</span><span>${t}</span>
+      </div>
+    `).join('')}
+  `;
+  const rect = anchorEl.getBoundingClientRect();
+  pop.style.left = Math.round(rect.left) + 'px';
+  pop.style.top = Math.round(rect.bottom + 4) + 'px';
+  pop.style.display = 'block';
+  pop.querySelectorAll('.tt-opt').forEach(opt => {
+    opt.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      setTipoTienda(centro, opt.getAttribute('data-tipo'));
+    });
+  });
+}
+function closeTipoTiendaPicker(){
+  document.getElementById('tipoTiendaPopover').style.display = 'none';
+}
+document.addEventListener('click', closeTipoTiendaPicker);
+document.addEventListener('scroll', closeTipoTiendaPicker, true);
+
+document.getElementById('fileInput').addEventListener('change', (e)=>{ if(e.target.files[0]) handleFile(e.target.files[0]); });
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', (e)=>{ e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', ()=> dz.classList.remove('drag'));
+dz.addEventListener('drop', (e)=>{
+  e.preventDefault(); dz.classList.remove('drag');
+  if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+document.getElementById('searchBox').addEventListener('input', applyFilters);
+document.getElementById('resetFilters').addEventListener('click', ()=>{
+  document.getElementById('searchBox').value='';
+  Object.keys(filters).forEach(k => { if(filters[k] instanceof Set) filters[k].clear(); });
+  applyFilters();
+});
+
+const CRITERIOS = [
+  { icon:'🆕', title:'Nueva implantación',
+    desc:'La tienda pasa de estar inactiva (modelo 0 o sin dato) a tener modelo activo por primera vez en el año. Solo se aplica a la primera vez que un centro se activa.' },
+  { icon:'▲', title:'Ampliación',
+    desc:'La tienda ya estaba activa y sube de modelo (por ejemplo NTC30 → NTC60).' },
+  { icon:'▼', title:'Reducción',
+    desc:'La tienda ya estaba activa y baja de modelo (por ejemplo NTC90 → NTC60).' },
+  { icon:'🔧', title:'Cierre por reforma',
+    desc:'La tienda pasa a modelo 0, pero vuelve a aparecer activa más adelante en el año. En el calendario se muestra el cierre y, en su semana correspondiente, la reapertura (↩️) con el mismo color.' },
+  { icon:'⛔', title:'Cierre de servicio',
+    desc:'La tienda pasa a modelo 0 y no vuelve a activarse en el resto del año 2027 (cierre definitivo dentro del periodo analizado).' },
+  { icon:'⏳', title:'Tienda temporal · apertura',
+    desc:'Una tienda que se implanta a mitad de año (nueva implantación) y que después, en algún momento, cierra (pasa a modelo 0) — típicamente para cubrir el reparto de otra tienda mientras esta está cerrada por reforma. La apertura se marca en morado, e indica de qué centro recibe los códigos postales al arrancar.' },
+  { icon:'⌛', title:'Tienda temporal · cierre',
+    desc:'El cierre de esa misma tienda temporal, en un color distinto (magenta) para diferenciarlo de su apertura. Indica a qué centro pasan sus códigos postales al cerrar, igual que un cierre normal.' },
+  { icon:'☀️', title:'Patrón tienda de verano',
+    desc:'La tienda incrementa de modelo en mayo, junio o julio, y lo reduce en agosto o septiembre. Se marca sobre las propias fichas de Ampliación/Reducción que cumplen ese patrón estacional.' },
+  { icon:'↩️', title:'Reapertura',
+    desc:'No es un filtro independiente: es la ficha que acompaña a un Cierre por reforma cuando la tienda vuelve a activarse. Se incluye automáticamente al filtrar por "Cierre por reforma".' },
+  { icon:'→', title:'Centro que asume el reparto',
+    desc:'Cuando el Excel incluye la pestaña de asignación de códigos postales por centro y semana, en los cierres (por reforma o de servicio), en las reaperturas y en las aperturas de tienda temporal se muestra automáticamente qué centro cubre (o cubría) esos códigos postales. Si esa pestaña no está en el fichero cargado, esta información simplemente no aparece.' },
+  { icon:'🔧', title:'Refuerzo por reforma (en Ampliación/Reducción)',
+    desc:'Cuando un centro absorbe los códigos postales de otro que cierra por reforma, suele subir de modelo esa misma semana (para asumir la carga) y bajarlo de nuevo poco después de que el centro cerrado reabra. Esas dos fichas concretas de Ampliación/Reducción se marcan con este icono, igual que el de Cierre por reforma, para distinguirlas de un cambio de modelo normal.' },
+  { icon:'📌', title:'Ampliación permanente',
+    desc:'Una Ampliación que es el último movimiento del año para ese centro: sube de modelo y ya no se vuelve a tocar en el resto de 2027 (a diferencia de una subida de verano o de refuerzo, que luego bajan otra vez).' },
+];
+
+function renderCriteriaPanel(){
+  const panel = document.getElementById('criteriaPanel');
+  panel.innerHTML = CRITERIOS.map(c => `
+    <div class="crit-item">
+      <div class="crit-icon">${c.icon}</div>
+      <div><span class="crit-title">${c.title}</span><span class="crit-desc">${c.desc}</span></div>
+    </div>
+  `).join('');
+}
+document.getElementById('criteriaToggle').addEventListener('click', function(){
+  const panel = document.getElementById('criteriaPanel');
+  const showing = panel.style.display !== 'none';
+  panel.style.display = showing ? 'none' : 'block';
+  this.textContent = showing ? 'ℹ️ Ver criterios de cada movimiento' : 'ℹ️ Ocultar criterios';
+});
+renderCriteriaPanel();
+
+function renderReformaSinMovimiento(){
+  const btn = document.getElementById('reformaSinMovToggle');
+  const panel = document.getElementById('reformaSinMovPanel');
+  if(!reformaSinMovimiento.length){
+    btn.style.display = 'none';
+    panel.style.display = 'none';
+    return;
+  }
+  btn.style.display = 'inline-flex';
+  btn.textContent = `⚠️ ${reformaSinMovimiento.length} centro(s) con reforma sin movimiento en el calendario`;
+  const rows = reformaSinMovimiento
+    .sort((a,b)=> String(a.centro).localeCompare(String(b.centro)))
+    .map(c => `
+      <div class="crit-item">
+        <div class="crit-icon">⚠️</div>
+        <div>
+          <span class="crit-title">${c.centro} · ${c.denom}${c.poblacion? ' · '+c.poblacion:''}</span>
+          <span class="crit-desc">Zona ${c.zona||'—'} / ${c.region||'—'} · Reforma anotada: ${c.reformaLabel} · Modelo actual constante: ${c.modeloActual}</span>
+        </div>
+      </div>
+    `).join('');
+  panel.innerHTML = `
+    <div class="crit-desc" style="margin-bottom:8px;">
+      Estos centros tienen una fecha de reforma anotada en el Excel, pero su modelo no cambia en ninguna semana de 2027 —
+      por eso no generan ninguna ficha y no aparecen en el calendario. Puede ser que la reforma aún no esté reflejada en el
+      dimensionado, o que no implique cierre de servicio.
+    </div>
+    ${rows}
+  `;
+}
+document.getElementById('reformaSinMovToggle').addEventListener('click', function(){
+  const panel = document.getElementById('reformaSinMovPanel');
+  panel.style.display = panel.style.display !== 'none' ? 'none' : 'block';
+});
+
+document.getElementById('undoBtn').addEventListener('click', ()=>{
+  if(confirm('¿Deshacer todos los cambios manuales de arrastre? Esto no afecta al Excel original.')) undoAllChanges();
+});
+document.getElementById('exportBtn').addEventListener('click', exportChanges);
+
+document.getElementById('themeToggle').addEventListener('click', ()=>{
+  const html = document.documentElement;
+  const cur = html.getAttribute('data-theme');
+  html.setAttribute('data-theme', cur==='light' ? 'dark' : 'light');
+  localStorage.setItem('pom2027_theme', html.getAttribute('data-theme'));
+});
+(function(){
+  const saved = localStorage.getItem('pom2027_theme');
+  if(saved) document.documentElement.setAttribute('data-theme', saved);
+})();
+
+loadFromStorage();
+</script>
+
+</body>
+</html>
