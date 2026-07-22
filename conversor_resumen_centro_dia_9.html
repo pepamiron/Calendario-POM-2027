@@ -95,6 +95,14 @@
     <div class="downloads">
       <button id="downloadXlsx">⬇️ Descargar .xlsx</button>
       <button id="downloadCsv">⬇️ Descargar .csv</button>
+      <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
+        <input type="checkbox" id="toggleEspecial" style="width:16px; height:16px;">
+        Incluir columna "especial" (iconos) en la vista y en la descarga
+      </label>
+      <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
+        <input type="checkbox" id="toggleCriterio" style="width:16px; height:16px;">
+        Incluir columna "criterio" (al final) en la vista y en la descarga
+      </label>
     </div>
 
     <div class="panel">
@@ -173,9 +181,46 @@ function findCPCentroSheet(wb){
       const hasPostal = row.some(c=>normalizeHeader(c)==='POSTAL_CODE');
       const centroIdx = row.findIndex(c=>normalizeHeader(c)==='CENTRO');
       if(hasPostal && centroIdx>-1) return { sheetName:name, headerRowIdx:r, centroMarkerCol:centroIdx };
+    }  }
+  return null;
+}
+
+function findCierresT9Sheet(wb){
+  return wb.SheetNames.find(n => normalizeHeader(n).includes('CIERRE') && normalizeHeader(n).includes('T9')) || null;
+}
+// Returns { byCentro: { [centro]: [{inicio, fin}, ...] }, receptorMap: { [receptorCentro]: [{closingCentro, inicio, fin}, ...] } }
+function parseCierresT9(wb){
+  const name = findCierresT9Sheet(wb);
+  if(!name) return { byCentro:{}, receptorMap:{} };
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1, raw:true, defval:null});
+  const headerRowIdx = rows.findIndex(row => row && row.some(c=>normalizeHeader(c)==='CENTRO'));
+  if(headerRowIdx===-1) return { byCentro:{}, receptorMap:{} };
+  const headerRow = rows[headerRowIdx];
+  const centroIdx = headerRow.findIndex(c=>normalizeHeader(c)==='CENTRO');
+  const inicioIdx = headerRow.findIndex(c=>normalizeHeader(c).includes('INICIO OBRA'));
+  const finIdx = headerRow.findIndex(c=>normalizeHeader(c).includes('FIN OBRA'));
+  const receptorIdx = headerRow.findIndex(c=>normalizeHeader(c).includes('RECEPTOR'));
+  if(centroIdx===-1 || finIdx===-1) return { byCentro:{}, receptorMap:{} };
+  const byCentro = {};
+  const receptorMap = {};
+  for(let r=headerRowIdx+1;r<rows.length;r++){
+    const row = rows[r];
+    if(!row) continue;
+    const centro = row[centroIdx];
+    if(centro===null||centro===undefined||centro==='') continue;
+    const key = String(centro);
+    const inicio = inicioIdx>-1 ? excelToJSDate(row[inicioIdx]) : null;
+    const fin = excelToJSDate(row[finIdx]);
+    (byCentro[key] = byCentro[key] || []).push({ inicio, fin });
+
+    if(receptorIdx>-1 && row[receptorIdx]!==null && row[receptorIdx]!==undefined && row[receptorIdx]!==''){
+      // "CENTRO RECEPTOR SERVICIO" can list more than one receiving center, one per line.
+      String(row[receptorIdx]).split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean).forEach(rec=>{
+        (receptorMap[rec] = receptorMap[rec] || []).push({ closingCentro:key, inicio, fin });
+      });
     }
   }
-  return null;
+  return { byCentro, receptorMap };
 }
 
 // ---------- parse "Centro x POM" ----------
@@ -300,7 +345,8 @@ function parsePomSheet(wb){
       reformaRaw: reformaRawStr,
       reformaDate,
       weeklyValues: numVals,
-      events
+      events,
+      isTemporal
     };
   }
   return { centros, weekDates };
@@ -366,23 +412,13 @@ function weekIndexForDay(day, weekDates){
 }
 
 // ---------- build the daily POM series for one center, honoring the reforma-date exception on closures ----------
-function buildDailyPom(centroData, weekDates, allDays){
-  const REFORMA_MATCH_WINDOW_DAYS = 10;
+function buildDailyPom(centroData, weekDates, allDays, eventEffectiveDateMap, cpData){
+  const centroKey = String(centroData.centro);
   const transitions = [{ date: weekDates[0], value: centroData.weeklyValues[0] || 0 }];
   centroData.events.forEach(e=>{
-    let effDate = weekDates[e.idx];
-    if(['cierre_reforma','cierre_servicio','temporal_cierre'].includes(e.tipo) && centroData.reformaDate){
-      // The REFORMA (FECHA) column only holds ONE date per center, but a center can close and
-      // reopen more than once in the year. Only use that date for the closure it actually
-      // corresponds to — the one whose week falls near it — not for every closure of that center.
-      const diffDays = Math.abs((centroData.reformaDate - weekDates[e.idx]) / 86400000);
-      if(diffDays <= REFORMA_MATCH_WINDOW_DAYS) effDate = centroData.reformaDate;
-    } else if(e.tipo === 'reduccion'){
-      // Every model reduction, whatever the reason (verano, refuerzo de otra reforma, o cualquier
-      // otra), takes effect the Monday after that week's Friday, not the Friday itself.
-      effDate = addDays(weekDates[e.idx], 3);
-    }
-    transitions.push({ date: effDate, value: e.to, tipo: e.tipo, esVerano: e.esVerano, permanente: e.permanente, effDate, weekFriday: weekDates[e.idx] });
+    const mapKey = fmtDate(weekDates[e.idx]) + '|' + centroKey;
+    const effDate = eventEffectiveDateMap[mapKey] || weekDates[e.idx];
+    transitions.push({ date: effDate, value: e.to, tipo: e.tipo, esVerano: e.esVerano, permanente: e.permanente });
   });
   transitions.sort((a,b)=>a.date-b.date);
 
@@ -393,7 +429,10 @@ function buildDailyPom(centroData, weekDates, allDays){
     while(ti+1 < transitions.length && transitions[ti+1].date <= allDays[i]) ti++;
     dailyValue[i] = transitions[ti].value;
   }
-  // place badges exactly on their effective day
+  const CIERRE_TYPES = ['cierre_reforma','cierre_servicio','temporal_cierre'];
+  const RECEPCION_TYPES = ['temporal_apertura','reapertura'];
+  // place badges exactly on their effective day, annotated with the real CP destination/origin
+  // so the date of the handover can be double-checked against expectations.
   transitions.forEach(t=>{
     if(!t.tipo) return;
     const dIdx = allDays.findIndex(d => fmtDate(d) === fmtDate(t.date));
@@ -401,23 +440,52 @@ function buildDailyPom(centroData, weekDates, allDays){
       let icon = MOV_ICON[t.tipo] || '';
       if(t.esVerano) icon += '☀️';
       if(t.permanente) icon += '📌';
+      if(CIERRE_TYPES.includes(t.tipo)){
+        const recipients = findCpRecipients(cpData, centroKey, t.date);
+        if(recipients.length) icon += ' →' + recipients.join(',');
+      } else if(RECEPCION_TYPES.includes(t.tipo)){
+        const donors = findCpDonors(cpData, centroKey, t.date);
+        if(donors.length) icon += ' ←' + donors.join(',');
+      }
       dailyBadge[dIdx] = icon;
     }
   });
   return { dailyValue, dailyBadge, transitions };
 }
 
-// ---------- build the daily CP list for every center (default Friday-start blocks, no exceptions) ----------
-function buildDailyCP(cpData, allDays){
+// ---------- build the daily CP list for every center, honoring the same effective-date shifts as POM ----------
+function buildDailyCP(cpData, allDays, eventEffectiveDateMap){
   // dailyCPByCentro[dayIndex] = Map(centro -> [postal,...])
   const result = allDays.map(()=>({}));
   if(!cpData) return result;
-  const weekIdxCache = allDays.map(d => weekIndexForDay(d, cpData.weekDates));
+  const weekDatesCP = cpData.weekDates;
+
   cpData.rows.forEach(row=>{
+    // Build this postal code's own centro-transitions across the year, the same way we do for
+    // POM. Normally each transition takes effect on that week's Friday — but if the centro it's
+    // LEAVING is closing that week with a special date (reforma, or a Monday-shifted reduction),
+    // or the centro it's ARRIVING AT is reopening on a specific T9 date, the CP moves on that
+    // exact date too, so the handover lines up with the actual POM change.
+    const transitions = [{ date: weekDatesCP[0], value: row.centros[0] }];
+    for(let i=1;i<row.centros.length;i++){
+      if(row.centros[i] !== row.centros[i-1]){
+        let effDate = weekDatesCP[i];
+        const wf = fmtDate(weekDatesCP[i]);
+        const oldCentro = row.centros[i-1];
+        const newCentro = row.centros[i];
+        const keyOld = oldCentro ? wf + '|' + oldCentro : null;
+        const keyNew = newCentro ? wf + '|' + newCentro : null;
+        if(keyOld && eventEffectiveDateMap[keyOld]) effDate = eventEffectiveDateMap[keyOld];
+        else if(keyNew && eventEffectiveDateMap[keyNew]) effDate = eventEffectiveDateMap[keyNew];
+        transitions.push({ date: effDate, value: newCentro });
+      }
+    }
+    transitions.sort((a,b)=>a.date-b.date);
+
+    let ti = 0;
     for(let i=0;i<allDays.length;i++){
-      const wi = weekIdxCache[i];
-      if(wi===-1) continue;
-      const centro = row.centros[wi];
+      while(ti+1 < transitions.length && transitions[ti+1].date <= allDays[i]) ti++;
+      const centro = transitions[ti].value;
       if(!centro) continue;
       if(!result[i][centro]) result[i][centro] = [];
       result[i][centro].push(row.postal);
@@ -426,16 +494,239 @@ function buildDailyCP(cpData, allDays){
   return result;
 }
 
+// Precomputes, for every classified event of every center, the exact date it actually takes
+// effect on — used by BOTH buildDailyPom and buildDailyCP so a closure/reopening and the postal
+// codes that move because of it always land on the very same day.
+//   - Cierres (reforma/servicio/temporal): the REFORMA (FECHA) column on "5. Centro x POM", when
+//     it falls close to that closure's week.
+//   - Reducción: always the Monday after that week's Friday, whatever the reason.
+//   - Reapertura: the "FIN OBRA" date (column I) from "7. CIERRES POR T9", when it falls close
+//     to that reopening's week.
+// Anything without a matching date keeps the plain Friday default.
+function buildEventEffectiveDateMap(centros, weekDates, cierresT9ByCentro){
+  const MATCH_WINDOW_DAYS = 10;
+  const map = {};
+  Object.keys(centros).forEach(key=>{
+    const c = centros[key];
+    c.events.forEach(e=>{
+      let effDate = null;
+      if(['cierre_reforma','cierre_servicio','temporal_cierre'].includes(e.tipo) && c.reformaDate){
+        const diffDays = Math.abs((c.reformaDate - weekDates[e.idx]) / 86400000);
+        if(diffDays <= MATCH_WINDOW_DAYS) effDate = c.reformaDate;
+      } else if(e.tipo === 'reduccion'){
+        effDate = addDays(weekDates[e.idx], 3);
+      } else if(e.tipo === 'reapertura'){
+        const entries = cierresT9ByCentro[key] || [];
+        let bestDiff = Infinity;
+        entries.forEach(entry=>{
+          if(!entry.fin) return;
+          const diff = Math.abs((entry.fin - weekDates[e.idx]) / 86400000);
+          if(diff <= MATCH_WINDOW_DAYS && diff < bestDiff){ bestDiff = diff; effDate = entry.fin; }
+        });
+      }
+      if(effDate){
+        map[fmtDate(weekDates[e.idx]) + '|' + key] = effDate;
+      }
+    });
+  });
+  return map;
+}
+
+// Scans the postal-code sheet itself to find who a center's postal codes actually came from,
+// around the date it started holding them — this is the ground truth for "who is this temporary
+// store covering", rather than trusting the T9 receptor table alone (which may be missing,
+// incomplete, or list more receptors than actually took the CPs from that specific center).
+function findCpDonorCentro(cpData, targetCentro, aroundDate){
+  if(!cpData || !aroundDate) return null;
+  const targetKey = String(targetCentro);
+  const tally = {};
+  cpData.rows.forEach(row=>{
+    for(let i=1;i<row.centros.length;i++){
+      if(row.centros[i]===targetKey && row.centros[i-1] && row.centros[i-1]!==targetKey){
+        const diffDays = Math.abs((cpData.weekDates[i] - aroundDate) / 86400000);
+        if(diffDays <= 14){
+          tally[row.centros[i-1]] = (tally[row.centros[i-1]] || 0) + 1;
+        }
+      }
+    }
+  });
+  let best = null, bestCount = 0;
+  Object.entries(tally).forEach(([c,n])=>{ if(n > bestCount){ bestCount = n; best = c; } });
+  return best;
+}
+
+// Same idea as findCpDonorCentro but returns every donor found (not just the top one), used to
+// annotate the "especial" column so the exact date of a CP handover can be double-checked.
+function findCpDonors(cpData, targetCentro, aroundDate){
+  if(!cpData || !aroundDate) return [];
+  const targetKey = String(targetCentro);
+  const tally = {};
+  cpData.rows.forEach(row=>{
+    for(let i=1;i<row.centros.length;i++){
+      if(row.centros[i]===targetKey && row.centros[i-1] && row.centros[i-1]!==targetKey){
+        const diffDays = Math.abs((cpData.weekDates[i] - aroundDate) / 86400000);
+        if(diffDays <= 14) tally[row.centros[i-1]] = (tally[row.centros[i-1]] || 0) + 1;
+      }
+    }
+  });
+  return Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([c])=>c);
+}
+// The reverse: who receives a center's postal codes when it closes.
+function findCpRecipients(cpData, sourceCentro, aroundDate){
+  if(!cpData || !aroundDate) return [];
+  const sourceKey = String(sourceCentro);
+  const tally = {};
+  cpData.rows.forEach(row=>{
+    for(let i=1;i<row.centros.length;i++){
+      if(row.centros[i-1]===sourceKey && row.centros[i] && row.centros[i]!==sourceKey){
+        const diffDays = Math.abs((cpData.weekDates[i] - aroundDate) / 86400000);
+        if(diffDays <= 14) tally[row.centros[i]] = (tally[row.centros[i]] || 0) + 1;
+      }
+    }
+  });
+  return Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([c])=>c);
+}
+
+// Counts, for every center, how many DISTINCT dates it actually changes on — combining POM
+// events and postal-code handovers into the same effective-date timeline, so a closure whose
+// POM and CP move on the same day only counts once. This is what "un único cambio" vs "varios
+// cambios" is measured against.
+function computeChangeDateCounts(centros, weekDates, eventEffectiveDateMap, cpData){
+  const dateSets = {};
+  Object.keys(centros).forEach(key=>{
+    const c = centros[key];
+    const set = new Set();
+    c.events.forEach(e=>{
+      const mapKey = fmtDate(weekDates[e.idx]) + '|' + key;
+      const effDate = eventEffectiveDateMap[mapKey] || weekDates[e.idx];
+      set.add(fmtDate(effDate));
+    });
+    dateSets[key] = set;
+  });
+  if(cpData){
+    cpData.rows.forEach(row=>{
+      for(let i=1;i<row.centros.length;i++){
+        const oldC = row.centros[i-1], newC = row.centros[i];
+        if(newC === oldC) continue;
+        const wf = fmtDate(cpData.weekDates[i]);
+        let effDate = cpData.weekDates[i];
+        const keyOld = oldC ? wf + '|' + oldC : null;
+        const keyNew = newC ? wf + '|' + newC : null;
+        if(keyOld && eventEffectiveDateMap[keyOld]) effDate = eventEffectiveDateMap[keyOld];
+        else if(keyNew && eventEffectiveDateMap[keyNew]) effDate = eventEffectiveDateMap[keyNew];
+        const dstr = fmtDate(effDate);
+        if(oldC){ if(!dateSets[oldC]) dateSets[oldC] = new Set(); dateSets[oldC].add(dstr); }
+        if(newC){ if(!dateSets[newC]) dateSets[newC] = new Set(); dateSets[newC].add(dstr); }
+      }
+    });
+  }
+  const counts = {};
+  Object.keys(dateSets).forEach(k=>{ counts[k] = dateSets[k].size; });
+  return counts;
+}
+
+// One classification per center (repeated on all its rows), covering the cases requested so far.
+// Looks at BOTH the POM history and the postal-code history — a center can have "changes" purely
+// from a CP reshuffle even with a constant POM, and a temporary store's linked reform is confirmed
+// from the actual CP handover, not just the T9 table.
+//   0 distinct change-dates          -> Sin cambios
+//   temporary store                  -> Tienda temporal (cubre reforma del centro X)
+//   exactly 1 distinct change-date   -> Cambio permanente
+//   2+ distinct change-dates, no other rule matched -> Varios cambios (a case still to refine)
+function computeCriterio(key, c, t9ReceptorMap, weekDates, cpData, eventEffectiveDateMap, changeDateCounts){
+  const changeCount = changeDateCounts[key] || 0;
+  if(changeCount === 0) return 'Sin cambios';
+
+  if(c.isTemporal){
+    const aperturaEv = c.events.find(e=>e.tipo==='temporal_apertura');
+    let aperturaDate = null;
+    if(aperturaEv){
+      const mapKey = fmtDate(weekDates[aperturaEv.idx]) + '|' + key;
+      aperturaDate = eventEffectiveDateMap[mapKey] || weekDates[aperturaEv.idx];
+    }
+    // Prefer the real CP handover as evidence; only fall back to the T9 receptor table if the
+    // postal-code sheet doesn't give us a clear answer (e.g. this temp store has no CP at all).
+    let best = findCpDonorCentro(cpData, key, aperturaDate);
+    if(!best){
+      const entries = t9ReceptorMap[key] || [];
+      let bestDiff = Infinity;
+      entries.forEach(entry=>{
+        if(!entry.inicio || !aperturaDate) return;
+        const diff = Math.abs((entry.inicio - aperturaDate) / 86400000);
+        if(diff < bestDiff){ bestDiff = diff; best = entry.closingCentro; }
+      });
+    }
+    return best ? `Tienda temporal (cubre reforma del centro ${best})` : 'Tienda temporal';
+  }
+  if(changeCount === 1) return 'Cambio permanente';
+  return 'Varios cambios';
+}
+
+// The store that absorbs another one's reform (temporary or not) was, up to now, computing its
+// OWN opening/closing date independently (its own week's Friday) instead of inheriting the exact
+// date of the reform it's tied to. This links them: once we know (via the real CP handover) which
+// closing/reopening store a given apertura/cierre event corresponds to, its effective date is
+// overwritten to match that store's own effective date — so POM and CP always land on the same
+// day for BOTH the store that closes/reopens and the store that absorbs it.
+function refineLinkedDates(centros, weekDates, eventEffectiveDateMap, cpData){
+  const CIERRE_TYPES = ['cierre_reforma','cierre_servicio','temporal_cierre'];
+  Object.keys(centros).forEach(key=>{
+    const c = centros[key];
+    if(!c.isTemporal) return; // only the absorbing temporary store's own dates get realigned here
+
+    // Opening-type events (nueva implantación / reapertura / temporal apertura) that receive CPs
+    // from a store that is closing that same day — align to that store's own closing date.
+    c.events.filter(e=>['temporal_apertura','reapertura'].includes(e.tipo)).forEach(e=>{
+      const ownKey = fmtDate(weekDates[e.idx]) + '|' + key;
+      const roughDate = eventEffectiveDateMap[ownKey] || weekDates[e.idx];
+      const donor = findCpDonorCentro(cpData, key, roughDate);
+      if(!donor || !centros[donor]) return;
+      let bestDate = null, bestDiff = Infinity;
+      centros[donor].events.forEach(de=>{
+        if(!CIERRE_TYPES.includes(de.tipo)) return;
+        const donorKey = fmtDate(weekDates[de.idx]) + '|' + donor;
+        const donorEffDate = eventEffectiveDateMap[donorKey] || weekDates[de.idx];
+        const diff = Math.abs((donorEffDate - roughDate) / 86400000);
+        if(diff <= 14 && diff < bestDiff){ bestDiff = diff; bestDate = donorEffDate; }
+      });
+      if(bestDate) eventEffectiveDateMap[ownKey] = bestDate;
+    });
+
+    // Closing-type events (temporal cierre) that hand CPs back to a store that is reopening that
+    // same day — align to that store's own reapertura date.
+    c.events.filter(e=>e.tipo==='temporal_cierre').forEach(e=>{
+      const ownKey = fmtDate(weekDates[e.idx]) + '|' + key;
+      const roughDate = eventEffectiveDateMap[ownKey] || weekDates[e.idx];
+      const recipients = findCpRecipients(cpData, key, roughDate);
+      const recipient = recipients[0];
+      if(!recipient || !centros[recipient]) return;
+      let bestDate = null, bestDiff = Infinity;
+      centros[recipient].events.forEach(re=>{
+        if(re.tipo !== 'reapertura') return;
+        const recKey = fmtDate(weekDates[re.idx]) + '|' + recipient;
+        const recEffDate = eventEffectiveDateMap[recKey] || weekDates[re.idx];
+        const diff = Math.abs((recEffDate - roughDate) / 86400000);
+        if(diff <= 14 && diff < bestDiff){ bestDiff = diff; bestDate = recEffDate; }
+      });
+      if(bestDate) eventEffectiveDateMap[ownKey] = bestDate;
+    });
+  });
+}
+
 // ---------- main pipeline ----------
 function processWorkbook(wb){
   const { centros, weekDates } = parsePomSheet(wb);
   const cpData = parseCPSheet(wb);
+  const { byCentro: cierresT9ByCentro, receptorMap: t9ReceptorMap } = parseCierresT9(wb);
 
   const start = new Date(YEAR,0,1);
   const end = new Date(YEAR,11,31);
   const allDays = dateRangeDays(start, end);
 
-  const dailyCP = buildDailyCP(cpData, allDays);
+  const eventEffectiveDateMap = buildEventEffectiveDateMap(centros, weekDates, cierresT9ByCentro);
+  refineLinkedDates(centros, weekDates, eventEffectiveDateMap, cpData);
+  const dailyCP = buildDailyCP(cpData, allDays, eventEffectiveDateMap);
+  const changeDateCounts = computeChangeDateCounts(centros, weekDates, eventEffectiveDateMap, cpData);
 
   const rows = [];
   warnings = [];
@@ -447,7 +738,8 @@ function processWorkbook(wb){
 
   centroKeys.forEach(key=>{
     const c = centros[key];
-    const { dailyValue, dailyBadge } = buildDailyPom(c, weekDates, allDays);
+    const criterio = computeCriterio(key, c, t9ReceptorMap, weekDates, cpData, eventEffectiveDateMap, changeDateCounts);
+    const { dailyValue, dailyBadge } = buildDailyPom(c, weekDates, allDays, eventEffectiveDateMap, cpData);
 
     let everHasCP = false;
     for(let i=0;i<allDays.length;i++){
@@ -462,20 +754,36 @@ function processWorkbook(wb){
 
     for(let i=0;i<allDays.length;i++){
       const cpList = (dailyCP[i][key] || []).slice().sort((a,b)=>parseFloat(a)-parseFloat(b));
+      const pomVal = dailyValue[i];
+      let morningPom = 0;
+      if(pomVal !== null && pomVal !== undefined){
+        // A POM of 15 means the center only delivers in the morning shift, so the whole
+        // capacity is the morning figure — it doesn't get halved like every other value.
+        morningPom = (pomVal === 15) ? 15 : pomVal / 2;
+      }
       rows.push({
+        especial: dailyBadge[i],
         mercadona_code: c.centro,
         date: allDays[i],
-        pom: dailyValue[i],
-        morning_pom: 0,
-        postal_codes: cpList.join(', ')
+        pom: pomVal,
+        morning_pom: morningPom,
+        postal_codes: cpList.join(', '),
+        criterio
       });
     }
   });
 
   // Warn about centers present in the CP sheet but entirely absent from the POM sheet
   const centrosEnCP = new Set();
+  const cpsByPhantomCentro = {};
   if(cpData){
-    cpData.rows.forEach(row=> row.centros.forEach(c=>{ if(c) centrosEnCP.add(c); }));
+    cpData.rows.forEach(row=> row.centros.forEach(c=>{
+      if(c && c!=='0'){
+        centrosEnCP.add(c);
+        if(!cpsByPhantomCentro[c]) cpsByPhantomCentro[c] = new Set();
+        cpsByPhantomCentro[c].add(row.postal);
+      }
+    }));
   }
   const centrosSoloEnCP = [...centrosEnCP].filter(c => !centroKeys.includes(c));
 
@@ -483,7 +791,10 @@ function processWorkbook(wb){
     warnings.push({
       icon:'⚠️', title:`${centrosSoloEnCP.length} centro(s) con códigos postales asignados pero sin fila en la pestaña de POM`,
       desc:'Sus códigos postales no aparecerán en ningún sitio del resultado final, porque no hay POM al que asociarlos.',
-      list: centrosSoloEnCP.map(c=>`Centro ${c}`)
+      list: centrosSoloEnCP.map(c=>{
+        const cps = [...(cpsByPhantomCentro[c]||[])].sort((a,b)=>parseFloat(a)-parseFloat(b));
+        return `Centro ${c} — CP afectados: ${cps.join(', ')}`;
+      })
     });
   }
   if(centrosSinCP.length){
@@ -555,16 +866,18 @@ function renderWarnings(){
 
 function renderPreview(filterText){
   const table = document.getElementById('previewTable');
+  const showEspecial = document.getElementById('toggleEspecial').checked;
+  const showCriterio = document.getElementById('toggleCriterio').checked;
   const filtered = filterText
     ? finalRows.filter(r => String(r.mercadona_code).includes(filterText))
     : finalRows;
   const sample = filtered.slice(0, 200);
   table.innerHTML = `
-    <thead><tr><th>mercadona_code</th><th>date</th><th>pom</th><th>morning_pom</th><th>postal_codes</th></tr></thead>
+    <thead><tr>${showEspecial?'<th>especial</th>':''}<th>mercadona_code</th><th>date</th><th>pom</th><th>morning_pom</th><th>postal_codes</th>${showCriterio?'<th>criterio</th>':''}</tr></thead>
     <tbody>
       ${sample.map(r => `<tr>
-        <td>${r.mercadona_code}</td><td>${fmtDate(r.date)}</td>
-        <td>${r.pom}</td><td>${r.morning_pom}</td><td>${r.postal_codes}</td>
+        ${showEspecial?`<td>${r.especial||''}</td>`:''}<td>${r.mercadona_code}</td><td>${fmtDate(r.date)}</td>
+        <td>${r.pom}</td><td>${r.morning_pom}</td><td>${r.postal_codes}</td>${showCriterio?`<td>${r.criterio}</td>`:''}
       </tr>`).join('')}
     </tbody>
   `;
@@ -572,13 +885,19 @@ function renderPreview(filterText){
 
 // ---------- downloads ----------
 function toExportRows(){
-  return finalRows.map(r => ({
-    mercadona_code: r.mercadona_code,
-    date: fmtDate(r.date),
-    pom: r.pom,
-    morning_pom: r.morning_pom,
-    postal_codes: r.postal_codes
-  }));
+  const showEspecial = document.getElementById('toggleEspecial').checked;
+  const showCriterio = document.getElementById('toggleCriterio').checked;
+  return finalRows.map(r => {
+    const row = {};
+    if(showEspecial) row.especial = r.especial;
+    row.mercadona_code = r.mercadona_code;
+    row.date = fmtDate(r.date);
+    row.pom = r.pom;
+    row.morning_pom = r.morning_pom;
+    row.postal_codes = r.postal_codes;
+    if(showCriterio) row.criterio = r.criterio;
+    return row;
+  });
 }
 function downloadXlsx(){
   const ws = XLSX.utils.json_to_sheet(toExportRows());
@@ -633,6 +952,8 @@ dz.addEventListener('drop', (e)=>{
 document.getElementById('downloadXlsx').addEventListener('click', downloadXlsx);
 document.getElementById('downloadCsv').addEventListener('click', downloadCsv);
 document.getElementById('filterCentro').addEventListener('input', (e)=> renderPreview(e.target.value.trim()));
+document.getElementById('toggleEspecial').addEventListener('change', ()=> renderPreview(document.getElementById('filterCentro').value.trim()));
+document.getElementById('toggleCriterio').addEventListener('change', ()=> renderPreview(document.getElementById('filterCentro').value.trim()));
 
 document.getElementById('themeToggle').addEventListener('click', ()=>{
   const html = document.documentElement;
@@ -648,3 +969,4 @@ document.getElementById('themeToggle').addEventListener('click', ()=>{
 
 </body>
 </html>
+
