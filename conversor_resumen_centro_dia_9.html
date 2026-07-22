@@ -82,6 +82,7 @@
     <h2>Sube el Excel de Dimensionado PA'27</h2>
     <p>Arrastra aquí el fichero, o pulsa el botón para seleccionarlo.</p>
     <p>Leo las pestañas de <b>"4. CCPP x Centro"</b> y <b>"5. Centro x POM"</b>, las paso a diario (semana empieza en viernes, salvo cierres con fecha de reforma anotada, que usan esa fecha exacta), y las uno en una tabla tipo <b>RESUMEN CENTRO DÍA</b>.</p>
+    <p style="font-size:12px;">¿No tienes el Excel a mano? Abre la <b>📊 Tabla de origen (Drive)</b> de arriba y descárgala como Excel (<i>Archivo → Descargar → Microsoft Excel (.xlsx)</i>) — esta herramienta no lee directamente de Google Sheets, necesita el fichero .xlsx.</p>
     <label class="btn" for="fileInput">📂 Seleccionar Excel</label>
     <div id="progress"></div>
   </div>
@@ -106,9 +107,25 @@
     </div>
 
     <div class="panel">
+      <h3 style="cursor:pointer;" id="criteriaToggle">ℹ️ Ver criterios aplicados <span style="color:var(--text-dim); font-weight:400; font-size:12px;">(clic para desplegar)</span></h3>
+      <div id="criteriaPanel" style="display:none;"></div>
+    </div>
+
+    <div class="panel">
       <h3>Vista previa <span style="color:var(--text-dim); font-weight:400; font-size:12px;">(primeras filas — la descarga incluye la tabla completa)</span></h3>
       <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
         <input type="text" id="filterCentro" placeholder="Filtrar por centro…">
+        <select id="filterCriterio">
+          <option value="">Todos los criterios</option>
+          <option value="Sin cambios">Sin cambios</option>
+          <option value="Cambio permanente">Cambio permanente</option>
+          <option value="Varios cambios">Varios cambios</option>
+          <option value="Tienda temporal">Tienda temporal (cualquiera)</option>
+        </select>
+        <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
+          <input type="checkbox" id="filterSoloMovimiento" style="width:16px; height:16px;">
+          Solo días con movimiento
+        </label>
       </div>
       <div class="preview-wrap">
         <table class="preview" id="previewTable"></table>
@@ -868,9 +885,14 @@ function renderPreview(filterText){
   const table = document.getElementById('previewTable');
   const showEspecial = document.getElementById('toggleEspecial').checked;
   const showCriterio = document.getElementById('toggleCriterio').checked;
-  const filtered = filterText
-    ? finalRows.filter(r => String(r.mercadona_code).includes(filterText))
-    : finalRows;
+  const criterioFilter = document.getElementById('filterCriterio').value;
+  const soloMovimiento = document.getElementById('filterSoloMovimiento').checked;
+
+  let filtered = finalRows;
+  if(filterText) filtered = filtered.filter(r => String(r.mercadona_code).includes(filterText));
+  if(criterioFilter) filtered = filtered.filter(r => r.criterio.startsWith(criterioFilter));
+  if(soloMovimiento) filtered = filtered.filter(r => r.especial);
+
   const sample = filtered.slice(0, 200);
   table.innerHTML = `
     <thead><tr>${showEspecial?'<th>especial</th>':''}<th>mercadona_code</th><th>date</th><th>pom</th><th>morning_pom</th><th>postal_codes</th>${showCriterio?'<th>criterio</th>':''}</tr></thead>
@@ -954,6 +976,43 @@ document.getElementById('downloadCsv').addEventListener('click', downloadCsv);
 document.getElementById('filterCentro').addEventListener('input', (e)=> renderPreview(e.target.value.trim()));
 document.getElementById('toggleEspecial').addEventListener('change', ()=> renderPreview(document.getElementById('filterCentro').value.trim()));
 document.getElementById('toggleCriterio').addEventListener('change', ()=> renderPreview(document.getElementById('filterCentro').value.trim()));
+document.getElementById('filterCriterio').addEventListener('change', ()=> renderPreview(document.getElementById('filterCentro').value.trim()));
+document.getElementById('filterSoloMovimiento').addEventListener('change', ()=> renderPreview(document.getElementById('filterCentro').value.trim()));
+
+const CRITERIOS = [
+  { icon:'📅', title:'Semana → día',
+    desc:'Por defecto, cada semana (columna del Excel) empieza el viernes y su valor se mantiene hasta el jueves siguiente, tanto para el POM como para los códigos postales.' },
+  { icon:'🔧', title:'Cierre por reforma / servicio — fecha exacta',
+    desc:'Si el centro que cierra tiene una fecha real en la columna "REFORMA (FECHA)" de la pestaña "5. Centro x POM", el cierre se aplica ese día exacto (no el viernes) — tanto en el POM como en el traspaso de sus códigos postales al centro que los recibe.' },
+  { icon:'↩️', title:'Reapertura — fecha exacta',
+    desc:'Se usa la columna "FIN OBRA" (I) de la pestaña "7. CIERRES POR T9", buscando la fila cuyo centro coincide. Si no hay fila para ese centro, se usa el viernes por defecto.' },
+  { icon:'▼', title:'Reducción — lunes siguiente',
+    desc:'Cualquier reducción de modelo (▼), sea cual sea el motivo (verano, refuerzo de otra reforma, o cualquier otro), se aplica el lunes siguiente al viernes de esa semana, no el viernes mismo.' },
+  { icon:'⏳', title:'Tienda temporal / centro que absorbe una reforma — misma fecha que la reforma',
+    desc:'Se identifica de qué centro recibe realmente los códigos postales (cruzando los datos de la pestaña de CP, no solo la tabla T9), y su propia apertura/cierre se sincroniza para caer exactamente el mismo día que el cierre/reapertura de esa reforma — tanto en su POM como en sus CP.' },
+  { icon:'🌅', title:'morning_pom',
+    desc:'Es la mitad del POM del día (pom / 2), salvo cuando el POM es 15 — en ese caso el reparto es solo de mañana, así que morning_pom = 15 (igual que el POM, no la mitad).' },
+  { icon:'📮', title:'Código postal (mercacp)',
+    desc:'Se usa la columna "mercacp" de "4. CCPP x Centro" (no "postal_code"), porque algunos códigos están subdivididos (ej. 30380.1/.2/.3/.4) y solo "mercacp" conserva esa distinción. Se restaura también el cero inicial que Excel pierde al tratarlo como número (08720, no 8720), y se listan en orden ascendente.' },
+  { icon:'🆕', title:'Columna "especial"',
+    desc:'Icono del movimiento de ese día concreto (🆕 Nueva implantación, ▲ Ampliación, ▼ Reducción, 🔧 Cierre por reforma, ⛔ Cierre de servicio, ⏳ Tienda temporal, ↩️ Reapertura, ☀️ patrón verano, 📌 permanente). En los cierres y aperturas, se añade también a qué centro se traspasan o de qué centro se reciben los códigos postales ese mismo día, para poder contrastar la fecha.' },
+  { icon:'🏷️', title:'Columna "criterio"',
+    desc:'Una clasificación por centro (igual todos los días del año): "Sin cambios" si ni el POM ni los CP cambian en todo el año; "Tienda temporal (cubre reforma del centro X)" si es una apertura temporal ligada a otra reforma; "Cambio permanente" si tiene exactamente un cambio (de POM o de CP) que se mantiene hasta fin de año; "Varios cambios" para el resto, pendiente de desglosar en más casos.' },
+];
+function renderCriteriaPanel(){
+  const panel = document.getElementById('criteriaPanel');
+  panel.innerHTML = CRITERIOS.map(c => `
+    <div class="warn-item">
+      <div class="wicon">${c.icon}</div>
+      <div><span class="wtitle">${c.title}</span><span class="wdesc">${c.desc}</span></div>
+    </div>
+  `).join('');
+}
+renderCriteriaPanel();
+document.getElementById('criteriaToggle').addEventListener('click', function(){
+  const panel = document.getElementById('criteriaPanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
 
 document.getElementById('themeToggle').addEventListener('click', ()=>{
   const html = document.documentElement;
